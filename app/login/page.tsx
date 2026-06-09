@@ -17,18 +17,19 @@ export default function LoginPage() {
   setErro('')
   setLoading(true)
 
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email,
     password: senha,
   })
 
-  if (error || !data.session) {
+  if (error) {
     setErro('Email ou senha incorretos.')
     setLoading(false)
     return
   }
 
-  window.location.replace('/dashboard')
+  // Força reload completo — browser envia os cookies novos pro servidor
+  window.location.href = 'https://csol-cestas.vercel.app/dashboard'
 }
 
   return (
