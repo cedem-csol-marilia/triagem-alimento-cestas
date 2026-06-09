@@ -1,5 +1,5 @@
 'use client'
-// app/dashboard/layout.tsx
+// app/(dashboard)/layout.tsx
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -24,11 +24,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return
       }
 
-      const [
-        { count: t },
-        { count: f },
-        { count: i },
-      ] = await Promise.all([
+      const [{ count: t }, { count: f }, { count: i }] = await Promise.all([
         supabase.from('respostas_forms').select('*', { count: 'exact', head: true }).eq('dedup_status', 'novo'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
         supabase.from('cadastro_incompleto').select('*', { count: 'exact', head: true }),
