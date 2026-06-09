@@ -1,70 +1,171 @@
 'use client'
-// app/familias/page.tsx
-// Página em construção — será expandida em breve
+// app/(dashboard)/familias/page.tsx
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Familia } from '@/types'
+import EditarFamiliaModal from '@/components/ui/EditarFamiliaModal'
+
+type FiltroStatus = 'todos' | 'fila' | 'confirmada' | 'ativa' | 'concluida' | 'inativa'
+
+const LABELS_STATUS: Record<string, string> = {
+  fila:       'Na fila',
+  confirmada: 'Confirmada',
+  ativa:      'Ativa',
+  concluida:  'Concluída',
+  inativa:    'Inativa',
+}
 
 export default function FamiliasPage() {
   const supabase = createClient()
-  const [familias, setFamilias] = useState<Familia[]>([])
-  const [loading,  setLoading]  = useState(true)
-  const [busca,    setBusca]    = useState('')
+  const [familias,   setFamilias]   = useState<Familia[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [busca,      setBusca]      = useState('')
+  const [filtro,     setFiltro]     = useState<FiltroStatus>('todos')
+  const [editando,   setEditando]   = useState<Familia | null>(null)
 
-  useEffect(() => {
-    async function carregar() {
-      const { data } = await supabase
-        .from('familias')
-        .select('*')
-        .order('nome_responsavel', { ascending: true })
-      setFamilias((data as Familia[]) ?? [])
-      setLoading(false)
-    }
-    carregar()
+  const carregar = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('familias')
+      .select('*')
+      .order('nome_responsavel', { ascending: true })
+    setFamilias((data as Familia[]) ?? [])
+    setLoading(false)
   }, [supabase])
 
-  const filtradas = familias.filter(f =>
-    f.nome_responsavel.toLowerCase().includes(busca.toLowerCase()) ||
-    (f.bairro ?? '').toLowerCase().includes(busca.toLowerCase()) ||
-    (f.whatsapp ?? '').includes(busca)
-  )
+  useEffect(() => { carregar() }, [carregar])
+
+  const filtradas = familias.filter(f => {
+    const matchBusca = !busca ||
+      f.nome_responsavel.toLowerCase().includes(busca.toLowerCase()) ||
+      (f.bairro ?? '').toLowerCase().includes(busca.toLowerCase()) ||
+      (f.whatsapp ?? '').includes(busca) ||
+      (f.endereco ?? '').toLowerCase().includes(busca.toLowerCase())
+    const matchFiltro = filtro === 'todos' || f.status === filtro
+    return matchBusca && matchFiltro
+  })
+
+  // Contagem por status
+  const contagens = familias.reduce((acc, f) => {
+    acc[f.status] = (acc[f.status] ?? 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  // Exportar confirmadas para pedido
+  function exportarConfirmadas() {
+    const confirmadas = familias.filter(f => f.status === 'confirmada')
+    if (confirmadas.length === 0) {
+      alert('Nenhuma família confirmada para o próximo ciclo.')
+      return
+    }
+    const linhas = [
+      ['Nome', 'WhatsApp', 'Endereço', 'Bairro', 'CEP', 'Ponto de referência', 'Total pessoas', 'Crianças', 'Idosos', 'Pode buscar CEDEM'].join(';'),
+      ...confirmadas.map(f => [
+        f.nome_responsavel,
+        f.whatsapp ?? '',
+        f.endereco ?? '',
+        f.bairro ?? '',
+        f.cep ?? '',
+        f.ponto_referencia ?? '',
+        f.num_total_pessoas_raw ?? f.num_total_pessoas ?? '',
+        f.num_criancas,
+        f.num_idosos,
+        f.pode_buscar_cedem ? 'Sim' : 'Não',
+      ].join(';'))
+    ]
+    const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `pedido-cestas-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (loading) return (
-    <>
-      <div className="page-header">
-        <h1 className="page-title">Famílias</h1>
-      </div>
-      <div className="page-content"><div className="spinner" /></div>
-    </>
+    <><div className="page-header"><h1 className="page-title">Famílias</h1></div>
+    <div className="page-content"><div className="spinner" /></div></>
   )
 
   return (
     <>
-      <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+      {editando && (
+        <EditarFamiliaModal
+          familia={editando}
+          onClose={() => setEditando(null)}
+          onSalvo={() => { setEditando(null); carregar() }}
+        />
+      )}
+
+      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
         <div>
           <h1 className="page-title">Famílias</h1>
-          <p className="page-subtitle">{familias.length} cadastros · {filtradas.length} exibidos</p>
+          <p className="page-subtitle">{filtradas.length} de {familias.length} cadastros</p>
         </div>
-        <input
-          className="form-input"
-          type="search"
-          placeholder="Buscar por nome, bairro ou WhatsApp..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          style={{ width: 280, marginBottom: 0 }}
-        />
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            className="form-input"
+            type="search"
+            placeholder="Buscar por nome, bairro, WhatsApp..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            style={{ width: 260, marginBottom: 0 }}
+          />
+          <button className="btn btn-secondary btn-sm" onClick={exportarConfirmadas}>
+            ⬇ Exportar pedido
+          </button>
+        </div>
       </div>
 
       <div className="page-content">
+
+        {/* Filtros por status */}
+        <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
+          {([
+            { id: 'todos',     label: 'Todos',      count: familias.length },
+            { id: 'fila',      label: 'Na fila',    count: contagens.fila      ?? 0 },
+            { id: 'confirmada',label: 'Confirmadas', count: contagens.confirmada ?? 0 },
+            { id: 'ativa',     label: 'Ativas',     count: contagens.ativa     ?? 0 },
+            { id: 'concluida', label: 'Concluídas', count: contagens.concluida ?? 0 },
+            { id: 'inativa',   label: 'Inativas',   count: contagens.inativa   ?? 0 },
+          ] as { id: FiltroStatus; label: string; count: number }[]).map(f => (
+            <button
+              key={f.id}
+              onClick={() => setFiltro(f.id)}
+              style={{
+                padding: '5px 14px',
+                borderRadius: 'var(--radius-pill)',
+                border: `1.5px solid ${filtro === f.id ? 'var(--terra-800)' : 'var(--terra-200)'}`,
+                background: filtro === f.id ? 'var(--terra-800)' : 'white',
+                color: filtro === f.id ? 'var(--palha)' : 'var(--terra-600)',
+                fontSize: '0.78rem',
+                fontWeight: filtro === f.id ? 500 : 400,
+                fontFamily: 'var(--font-body)',
+                cursor: 'pointer',
+                transition: 'all var(--transition)',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              {f.label}
+              <span style={{
+                background: filtro === f.id ? 'rgba(255,255,255,0.2)' : 'var(--terra-100)',
+                color: filtro === f.id ? 'var(--palha)' : 'var(--terra-500)',
+                fontSize: '0.62rem', fontWeight: 600,
+                padding: '0 5px', borderRadius: 10,
+              }}>
+                {f.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
         {filtradas.length === 0 ? (
-          <div className="card">
-            <div className="empty-state">
-              <div className="empty-state-icon">👩‍👧</div>
-              <div className="empty-state-title">Nenhuma família encontrada</div>
-              <div className="empty-state-desc">Tente outro termo de busca.</div>
-            </div>
-          </div>
+          <div className="card"><div className="empty-state">
+            <div className="empty-state-icon">👩‍👧</div>
+            <div className="empty-state-title">Nenhuma família encontrada</div>
+            <div className="empty-state-desc">Tente outro termo de busca ou filtro.</div>
+          </div></div>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -77,19 +178,20 @@ export default function FamiliasPage() {
                   <th>Renda</th>
                   <th>Score</th>
                   <th>Status</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtradas.map(f => (
-                  <tr key={f.id}>
+                  <tr key={f.id} style={{ opacity: f.status === 'inativa' ? 0.6 : 1 }}>
                     <td>
                       <div style={{ fontWeight: 500, color: 'var(--terra-900)' }}>{f.nome_responsavel}</div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>{f.endereco}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>{f.endereco ?? '—'}</div>
                     </td>
                     <td style={{ fontSize: '0.82rem' }}>{f.bairro ?? '—'}</td>
                     <td style={{ fontSize: '0.82rem' }}>
                       {f.whatsapp ? (
-                        <a href={`https://wa.me/55${f.whatsapp.replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--musgo-500)' }}>
+                        <a href={`https://wa.me/55${f.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--musgo-500)' }}>
                           {f.whatsapp}
                         </a>
                       ) : '—'}
@@ -99,8 +201,9 @@ export default function FamiliasPage() {
                       {f.num_criancas > 0 && <span style={{ color: 'var(--terra-500)' }}> · {f.num_criancas} cr.</span>}
                       {f.num_idosos  > 0 && <span style={{ color: 'var(--terra-500)' }}> · {f.num_idosos} id.</span>}
                       {f.tem_pcd        && <span style={{ color: 'var(--mogno-500)' }}> · PCD</span>}
+                      {f.monoparental   && <span style={{ color: 'var(--terra-500)' }}> · mono</span>}
                     </td>
-                    <td style={{ fontSize: '0.78rem', maxWidth: 140 }}>
+                    <td style={{ fontSize: '0.78rem', maxWidth: 130 }}>
                       <span style={{ display: 'inline-block', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {f.renda_faixa ?? '—'}
                       </span>
@@ -112,8 +215,19 @@ export default function FamiliasPage() {
                     </td>
                     <td>
                       <span className={`badge badge-${f.status}`}>
-                        {f.status === 'fila' ? 'Na fila' : f.status === 'confirmada' ? 'Confirmada' : f.status === 'ativa' ? 'Ativa' : f.status === 'concluida' ? 'Concluída' : 'Inativa'}
+                        {LABELS_STATUS[f.status] ?? f.status}
                       </span>
+                    </td>
+                    <td>
+                      {f.status !== 'inativa' && (
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => setEditando(f)}
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          Editar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

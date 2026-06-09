@@ -66,12 +66,7 @@ export default function TriagemPage() {
       supabase.from('duplicatas_detectadas').select('id, familia_id_1, familia_id_2, score, motivos, f1:familias!familia_id_1(nome_responsavel,whatsapp,endereco,cep,bairro,ponto_referencia,score,status), f2:familias!familia_id_2(nome_responsavel,whatsapp,endereco,cep,bairro,ponto_referencia,score,status)').eq('status', 'pendente').order('score', { ascending: false }),
     ])
     setRespostas((resp as RespostaNova[]) ?? [])
-    const dupsNormalizadas = (dups ?? []).map((d: any) => ({
-      ...d,
-      f1: Array.isArray(d.f1) ? d.f1[0] : d.f1,
-      f2: Array.isArray(d.f2) ? d.f2[0] : d.f2,
-    })) as DuplicataDetectada[]
-    setDuplicatas(dupsNormalizadas)
+    setDuplicatas((dups as DuplicataDetectada[]) ?? [])
     setLoading(false)
   }, [supabase])
 
@@ -139,12 +134,15 @@ export default function TriagemPage() {
             {duplicatas.length > 0 && ` · ${duplicatas.length} duplicata${duplicatas.length !== 1 ? 's' : ''} entre cadastros`}
           </p>
         </div>
-        <div style={{ background: 'var(--terra-50)', border: '1px solid var(--terra-200)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', maxWidth: 300, fontSize: '0.72rem', color: 'var(--terra-600)', lineHeight: 1.6 }}>
-          <div style={{ fontWeight: 500, color: 'var(--terra-800)', marginBottom: 4 }}>Como usar</div>
-          <div><strong style={{ color: 'var(--musgo-700)' }}>Mesma casa</strong> — mescla os registros</div>
-          <div><strong style={{ color: 'var(--terra-700)' }}>Casas separadas</strong> — famílias distintas</div>
-          <div><strong style={{ color: 'var(--ocre-600)' }}>Recadastro</strong> — já existe, sem penalidade</div>
-          <div><strong style={{ color: 'var(--mogno-500)' }}>Ignorar</strong> — dado inválido</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', alignItems: 'flex-end' }}>
+          <BotaoDetectarDuplicatas onDetectou={carregar} />
+          <div style={{ background: 'var(--terra-50)', border: '1px solid var(--terra-200)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)', maxWidth: 300, fontSize: '0.72rem', color: 'var(--terra-600)', lineHeight: 1.6 }}>
+            <div style={{ fontWeight: 500, color: 'var(--terra-800)', marginBottom: 4 }}>Como usar</div>
+            <div><strong style={{ color: 'var(--musgo-700)' }}>Mesma casa</strong> — mescla os registros</div>
+            <div><strong style={{ color: 'var(--terra-700)' }}>Casas separadas</strong> — famílias distintas</div>
+            <div><strong style={{ color: 'var(--ocre-600)' }}>Recadastro</strong> — já existe, sem penalidade</div>
+            <div><strong style={{ color: 'var(--mogno-500)' }}>Ignorar</strong> — dado inválido</div>
+          </div>
         </div>
       </div>
 
@@ -211,6 +209,36 @@ export default function TriagemPage() {
         )}
       </div>
     </>
+  )
+}
+
+function BotaoDetectarDuplicatas({ onDetectou }: { onDetectou: () => void }) {
+  const supabase = createClient()
+  const [rodando,   setRodando]   = useState(false)
+  const [resultado, setResultado] = useState<string | null>(null)
+
+  async function detectar() {
+    setRodando(true)
+    setResultado(null)
+    const { data, error } = await supabase.rpc('detectar_duplicatas')
+    if (error) {
+      setResultado('Erro: ' + error.message)
+    } else {
+      setResultado(data === 0 ? 'Nenhuma duplicata nova encontrada.' : `${data} par${data !== 1 ? 'es' : ''} encontrado${data !== 1 ? 's' : ''} — recarregando...`)
+      if (data > 0) setTimeout(onDetectou, 1500)
+    }
+    setRodando(false)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+      <button className="btn btn-secondary btn-sm" onClick={detectar} disabled={rodando}>
+        {rodando ? '🔍 Analisando...' : '🔍 Detectar duplicatas'}
+      </button>
+      {resultado && (
+        <span style={{ fontSize: '0.68rem', color: 'var(--terra-500)' }}>{resultado}</span>
+      )}
+    </div>
   )
 }
 

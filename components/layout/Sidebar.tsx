@@ -12,7 +12,8 @@ const NAV = [
   { href: '/fila',        icon: '🏆', label: 'Fila',                badge: 'fila' },
   { href: '/entregas',    icon: '🚚', label: 'Entregas' },
   { href: '/familias',    icon: '👩‍👧', label: 'Famílias' },
-  { href: '/configuracoes', icon: '⚙️', label: 'Configurações' },
+  { href: '/configuracoes',  icon: '⚙️', label: 'Configurações' },
+  { href: '/como-funciona',  icon: '📖', label: 'Como funciona' },
 ]
 
 interface SidebarProps {
