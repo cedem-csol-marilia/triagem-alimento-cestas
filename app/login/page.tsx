@@ -2,37 +2,35 @@
 // app/login/page.tsx
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
-  const router  = useRouter()
   const supabase = createClient()
 
-  const [email,    setEmail]    = useState('')
-  const [senha,    setSenha]    = useState('')
-  const [erro,     setErro]     = useState('')
-  const [loading,  setLoading]  = useState(false)
+  const [email,   setEmail]   = useState('')
+  const [senha,   setSenha]   = useState('')
+  const [erro,    setErro]    = useState('')
+  const [loading, setLoading] = useState(false)
 
- async function handleLogin(e: React.FormEvent) {
-  e.preventDefault()
-  setErro('')
-  setLoading(true)
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setErro('')
+    setLoading(true)
 
-  const { error } = await supabase.auth.signInWithPassword({ 
-    email, 
-    password: senha 
-  })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    })
 
-  if (error) {
-    setErro('Email ou senha incorretos.')
-    setLoading(false)
-    return
+    if (error || !data.session) {
+      setErro('Email ou senha incorretos.')
+      setLoading(false)
+      return
+    }
+
+    // Redireciona com reload completo para garantir que os cookies são lidos
+    window.location.replace('/dashboard')
   }
-
-  // Força reload completo para o middleware pegar a sessão
-  window.location.href = '/dashboard'
-}
 
   return (
     <div style={{
@@ -51,8 +49,6 @@ export default function LoginPage() {
         maxWidth: '400px',
         boxShadow: 'var(--shadow-lg)',
       }}>
-
-        {/* Logo / Header */}
         <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
           <div style={{
             width: 48, height: 48, borderRadius: '50%',
@@ -75,7 +71,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Formulário */}
         <form onSubmit={handleLogin}>
           <div className="form-group">
             <label className="form-label">Email</label>
