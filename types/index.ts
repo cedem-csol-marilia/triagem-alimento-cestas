@@ -29,6 +29,7 @@ export interface Familia {
   renda_faixa:             string | null
   renda_per_capita:        number | null
   tem_pcd:                 boolean
+  monoparental:            boolean
   pcd_descricao:           string | null
   auxilio_acao_social:     string | null
   auxilio_renda_gov:       boolean
