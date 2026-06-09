@@ -34,7 +34,7 @@ export default function AtualizarSenhaPage() {
       return
     }
     setOk(true)
-    setTimeout(() => { window.location.href = 'https://csol-cestas.vercel.app/dashboard' }, 1500)
+    setTimeout(() => { window.location.href = '/dashboard' }, 1500)
   }
 
   return (

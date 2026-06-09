@@ -32,7 +32,7 @@ export default function LoginPage() {
     }
 
     // Força reload completo — browser envia os cookies novos pro servidor
-    window.location.href = 'https://csol-cestas.vercel.app/dashboard'
+    window.location.href = '/dashboard'
   }
 
   async function handleReset() {
