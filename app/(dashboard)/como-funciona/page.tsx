@@ -21,12 +21,13 @@ export default function ComoFuncionaPage() {
 
         {/* Tabelas do banco */}
         <Secao titulo="Como os dados são organizados" emoji="🗄️">
-          <p style={estiloTexto}>O sistema tem 5 tabelas principais, cada uma com um papel específico:</p>
+          <p style={estiloTexto}>As tabelas principais, cada uma com um papel específico:</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
             {[
-              { nome: 'respostas_forms', icone: '📋', desc: 'Arquivo histórico de tudo que veio do Google Forms. Imutável — nunca apagamos. Se precisar rever uma resposta original, está aqui.' },
+              { nome: 'respostas_forms', icone: '📋', desc: 'Arquivo histórico de tudo que veio do Google Forms. É o input — só o Apps Script escreve aqui. Imutável: nunca apagamos. Se precisar rever uma resposta original, está aqui.' },
               { nome: 'familias', icone: '🏠', desc: 'Um cadastro por família real, após triagem. Contém o score de prioridade, status (fila, ativa, concluída) e todos os dados consolidados.' },
-              { nome: 'duplicatas_detectadas', icone: '🔍', desc: 'Registro de cada decisão de triagem. Quem foi mesclado, quem ficou, quando, por quê. Auditável e permanente.' },
+              { nome: 'duplicatas_detectadas', icone: '🔍', desc: 'Pares de cadastros suspeitos de serem a mesma casa, com a decisão de cada um (mesma casa, separadas, ignorado). Auditável e permanente.' },
+              { nome: 'config_pesos_duplicacao', icone: '⚖️', desc: 'Os pesos dos sinais de duplicata. Editáveis em Configurações → Regra de duplicatas, sem mexer em código.' },
               { nome: 'ciclos', icone: '📅', desc: 'Cada período de 3 meses que uma família recebeu. Uma família pode ter vários ciclos ao longo do tempo.' },
               { nome: 'entregas', icone: '🚚', desc: 'Controle mês a mês. Pedido feito? Entregue? Data? É essa tabela que você edita na página de Entregas.' },
             ].map(t => (
@@ -44,14 +45,16 @@ export default function ComoFuncionaPage() {
         {/* Triagem de duplicatas */}
         <Secao titulo="Como tratamos duplicatas" emoji="👥">
           <p style={estiloTexto}>
-            Quando uma nova resposta chega, o sistema compara automaticamente com todas as famílias já cadastradas usando 4 critérios:
+            O sistema compara cadastros — tanto uma resposta nova contra as famílias já cadastradas, quanto as famílias existentes entre si (botão "Detectar duplicatas" na Triagem) — usando estes sinais. Cada sinal soma pontos:
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, margin: '12px 0' }}>
             {[
               { criterio: 'WhatsApp idêntico', peso: '50 pts', desc: 'Mesmo número = mesma pessoa. Sinal mais forte.' },
               { criterio: 'CEP + endereço com número', peso: '30 pts', desc: 'Mesma rua, mesmo número, mesmo CEP = mesma casa.' },
+              { criterio: 'Mesma composição familiar', peso: '20 pts', desc: 'Mesmo total de pessoas, crianças e idosos reportados = provável mesma casa se cadastrando de novo.' },
+              { criterio: 'Sobrenome incomum', peso: '15 pts', desc: 'Elchin, Giraudon — sobrenomes raros que coincidem (sinal de parentesco).' },
               { criterio: 'Ponto de referência', peso: '10 pts', desc: '"Lojinha da Jéssica" em duas respostas é forte evidência.' },
-              { criterio: 'Sobrenome incomum', peso: '10 pts', desc: 'Elchin, Giraudon — sobrenomes raros que coincidem.' },
+              { criterio: 'CEP + endereço sem número', peso: '10 pts', desc: 'Mesmo CEP e endereço, mas sem o número identificável.' },
             ].map(c => (
               <div key={c.criterio} style={{ padding: '10px 12px', background: 'var(--terra-50)', border: '1px solid var(--terra-200)', borderRadius: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -63,8 +66,13 @@ export default function ComoFuncionaPage() {
             ))}
           </div>
           <p style={{ ...estiloTexto, marginTop: 12 }}>
-            <strong>Sobrenomes comuns</strong> (Silva, Santos, Souza, Oliveira e ~60 outros) não contam pontos — só sobrenomes raros. Se a similaridade for ≥ 40%, vai para a triagem para você decidir. Nunca é automático.
+            <strong>Sobrenomes comuns</strong> (Silva, Santos, Souza, Oliveira e ~60 outros) não contam pontos — só sobrenomes raros. Se a similaridade for <strong>≥ 30</strong>, o par vai para a triagem para você decidir. Nunca é automático. Os pesos e o que cada sinal vale são editáveis em <strong>Configurações → Regra de duplicatas</strong>.
           </p>
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--mogno-100)', border: '1px solid var(--mogno-300)', borderRadius: 8 }}>
+            <p style={{ fontSize: '0.78rem', color: 'var(--mogno-500)', lineHeight: 1.5 }}>
+              <strong>Já recebeu?</strong> Quando uma resposta nova bate com uma família que já recebeu cesta, o card da triagem mostra um aviso — assim você marca <strong>Recadastro</strong> e evita enviar cesta repetida para a mesma casa.
+            </p>
+          </div>
           <div style={{ marginTop: 12, padding: '10px 14px', background: '#FDF6D3', border: '1px solid var(--ocre-200)', borderRadius: 8 }}>
             <p style={{ fontSize: '0.78rem', color: 'var(--ocre-600)', lineHeight: 1.5 }}>
               <strong>Importante:</strong> endereço sem número (ex: "Rua Jacaraípe" sem nada) vai para <strong>Cadastro Incompleto</strong> — você decide se contacta a família pelo WhatsApp para pedir o complemento.
@@ -90,7 +98,7 @@ export default function ComoFuncionaPage() {
         {/* Score de prioridade */}
         <Secao titulo="Score de priorização da fila" emoji="🏆">
           <p style={estiloTexto}>
-            Cada família na fila tem um score calculado automaticamente. Quanto maior o score, mais alta a posição na fila. Os pesos podem ser ajustados na página de <strong>Configurações</strong>.
+            Cada família na fila tem um score calculado automaticamente. Quanto maior o score, mais alta a posição na fila. É diferente do score de duplicata: este aqui mede <strong>necessidade</strong>. Os pesos podem ser ajustados em <strong>Configurações → Priorização da fila</strong>.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
             {[
@@ -148,7 +156,7 @@ export default function ComoFuncionaPage() {
             O sistema usa autenticação por email e senha. Apenas usuárias autorizadas têm acesso. O banco de dados tem Row Level Security ativo — mesmo com a chave de API, ninguém sem login consegue ler ou escrever dados.
           </p>
           <p style={{ ...estiloTexto, marginTop: 8 }}>
-            O Google Forms envia dados via Apps Script usando uma chave de serviço do Supabase. Essa chave só tem permissão de inserir respostas — não lê dados existentes, não edita famílias.
+            O Google Forms envia dados via Apps Script usando uma chave de serviço do Supabase. Novas colaboradoras entram por convite: recebem um e-mail e definem a própria senha.
           </p>
         </Secao>
 
