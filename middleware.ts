@@ -1,4 +1,7 @@
 // middleware.ts
+// Versão simplificada — apenas passa cookies adiante
+// A proteção de rota fica no dashboard/layout.tsx
+
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -26,21 +29,8 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
-
-  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
-
-  if (!session && !isLoginPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  if (session && isLoginPage) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
+  // Apenas atualiza a sessão — sem redirecionar
+  await supabase.auth.getSession()
 
   return supabaseResponse
 }
