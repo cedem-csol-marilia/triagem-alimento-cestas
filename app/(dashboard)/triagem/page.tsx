@@ -66,7 +66,12 @@ export default function TriagemPage() {
       supabase.from('duplicatas_detectadas').select('id, familia_id_1, familia_id_2, score, motivos, f1:familias!familia_id_1(nome_responsavel,whatsapp,endereco,cep,bairro,ponto_referencia,score,status), f2:familias!familia_id_2(nome_responsavel,whatsapp,endereco,cep,bairro,ponto_referencia,score,status)').eq('status', 'pendente').order('score', { ascending: false }),
     ])
     setRespostas((resp as RespostaNova[]) ?? [])
-    setDuplicatas((dups as DuplicataDetectada[]) ?? [])
+    const dupsNormalizadas = (dups ?? []).map((d: any) => ({
+      ...d,
+      f1: Array.isArray(d.f1) ? d.f1[0] : d.f1,
+      f2: Array.isArray(d.f2) ? d.f2[0] : d.f2,
+    })) as DuplicataDetectada[]
+    setDuplicatas(dupsNormalizadas)
     setLoading(false)
   }, [supabase])
 
