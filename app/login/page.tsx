@@ -10,27 +10,49 @@ export default function LoginPage() {
   const [email,   setEmail]   = useState('')
   const [senha,   setSenha]   = useState('')
   const [erro,    setErro]    = useState('')
+  const [msg,     setMsg]     = useState('')
   const [loading, setLoading] = useState(false)
+  const [enviandoReset, setEnviandoReset] = useState(false)
 
- async function handleLogin(e: React.FormEvent) {
-  e.preventDefault()
-  setErro('')
-  setLoading(true)
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setErro('')
+    setMsg('')
+    setLoading(true)
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password: senha,
-  })
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    })
 
-  if (error) {
-    setErro('Email ou senha incorretos.')
-    setLoading(false)
-    return
+    if (error) {
+      setErro('Email ou senha incorretos.')
+      setLoading(false)
+      return
+    }
+
+    // Força reload completo — browser envia os cookies novos pro servidor
+    window.location.href = 'https://csol-cestas.vercel.app/dashboard'
   }
 
-  // Força reload completo — browser envia os cookies novos pro servidor
-  window.location.href = 'https://csol-cestas.vercel.app/dashboard'
-}
+  async function handleReset() {
+    setErro('')
+    setMsg('')
+    if (!email) {
+      setErro('Digite seu email no campo acima e clique novamente.')
+      return
+    }
+    setEnviandoReset(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://csol-cestas.vercel.app/auth/callback?next=/auth/atualizar-senha',
+    })
+    setEnviandoReset(false)
+    if (error) {
+      setErro('Não foi possível enviar o email de redefinição. Tente novamente.')
+      return
+    }
+    setMsg('Se este email estiver cadastrado, enviamos um link para redefinir a senha.')
+  }
 
   return (
     <div style={{
@@ -103,6 +125,11 @@ export default function LoginPage() {
               {erro}
             </div>
           )}
+          {msg && (
+            <div className="alert alert-success" style={{ marginBottom: 'var(--space-4)' }}>
+              {msg}
+            </div>
+          )}
 
           <button
             type="submit"
@@ -112,6 +139,25 @@ export default function LoginPage() {
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={enviandoReset}
+          style={{
+            display: 'block',
+            margin: 'var(--space-4) auto 0',
+            background: 'none',
+            border: 'none',
+            color: 'var(--terra-500)',
+            fontSize: '0.78rem',
+            fontFamily: 'var(--font-body)',
+            textDecoration: 'underline',
+            cursor: 'pointer',
+          }}
+        >
+          {enviandoReset ? 'Enviando...' : 'Esqueci minha senha'}
+        </button>
 
         <p style={{
           textAlign: 'center',
