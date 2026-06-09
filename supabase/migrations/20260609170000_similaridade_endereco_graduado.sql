@@ -1,6 +1,20 @@
--- Snapshot de calcular_similaridade_familias (gate de endereço 0.7, lê config_pesos_duplicacao).
--- Canônico em migrations/20260609170000_similaridade_endereco_graduado.sql
-
+-- ============================================================
+-- Migration: endereço com pontuação graduada (gate 0.99 -> 0.7)
+-- Data: 2026-06-09
+--
+-- PROBLEMA
+--   calcular_similaridade_familias exigia similaridade de endereço
+--   >= 0.99 (texto praticamente idêntico) para dar os pontos de
+--   endereço. Famílias no MESMO endereço escrito de forma um pouco
+--   diferente (ex.: cluster Elchin na "general irulegui cunha 644")
+--   ganhavam 0 de endereço e ficavam abaixo do corte de 30 — então
+--   não apareciam na triagem.
+--
+-- CORREÇÃO
+--   - Gate do endereço relaxado de 0.99 para 0.7.
+--   - Fallback: "mesmo CEP" sozinho já soma (endereco_sem_numero).
+--   Continua lendo os pesos de config_pesos_duplicacao.
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.calcular_similaridade_familias(p_id1 uuid, p_id2 uuid)
  RETURNS TABLE(score numeric, motivos text[])
  LANGUAGE plpgsql
