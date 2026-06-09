@@ -1,40 +1,52 @@
+'use client'
 // app/dashboard/layout.tsx
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import Sidebar from '@/components/layout/Sidebar'
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 
-export default async function DashboardLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
   const supabase = createClient()
+  const [loading, setLoading] = useState(true)
+  const [triagemCount, setTriagemCount] = useState(0)
+  const [filaCount, setFilaCount] = useState(0)
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  useEffect(() => {
+    async function verificar() {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        router.replace('/login')
+        return
+      }
 
-  if (!user) {
-    redirect('/login')
-  }
+      const [{ count: t }, { count: f }] = await Promise.all([
+        supabase.from('respostas_forms').select('*', { count: 'exact', head: true }).eq('dedup_status', 'novo'),
+        supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
+      ])
 
-  const [{ count: triagemCount }, { count: filaCount }] = await Promise.all([
-    supabase
-      .from('respostas_forms')
-      .select('*', { count: 'exact', head: true })
-      .eq('dedup_status', 'novo'),
-    supabase
-      .from('familias')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'fila'),
-  ])
+      setTriagemCount(t ?? 0)
+      setFilaCount(f ?? 0)
+      setLoading(false)
+    }
+
+    verificar()
+  }, [supabase, router])
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: 'var(--areia)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="spinner" />
+    </div>
+  )
 
   return (
     <div className="app-layout">
-      <Sidebar
-        triagemCount={triagemCount ?? 0}
-        filaCount={filaCount ?? 0}
-      />
+      <Sidebar triagemCount={triagemCount} filaCount={filaCount} />
       <main className="app-main">
         {children}
       </main>
