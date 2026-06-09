@@ -12,38 +12,23 @@ export default function LoginPage() {
   const [erro,    setErro]    = useState('')
   const [loading, setLoading] = useState(false)
 
-  async function handleLogin(e: React.FormEvent) {
+ async function handleLogin(e: React.FormEvent) {
   e.preventDefault()
   setErro('')
   setLoading(true)
 
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    })
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password: senha,
+  })
 
-    if (error) {
-      setErro('Erro Supabase: ' + error.message + ' | Código: ' + error.status)
-      setLoading(false)
-      return
-    }
-
-    if (!data.session) {
-      setErro('Login ok mas sem sessão — tente novamente')
-      setLoading(false)
-      return
-    }
-
-    setErro('✅ Login ok! Redirecionando...')
-    setTimeout(() => {
-      window.location.replace('/dashboard')
-    }, 1000)
-
-  } catch (err: any) {
-    setErro('Exceção: ' + err.message)
+  if (error || !data.session) {
+    setErro('Email ou senha incorretos.')
     setLoading(false)
+    return
   }
+
+  window.location.replace('/dashboard')
 }
 
   return (

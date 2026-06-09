@@ -1,6 +1,7 @@
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+// app/dashboard/layout.tsx
 import Sidebar from '@/components/layout/Sidebar'
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 export default async function DashboardLayout({
   children,
@@ -8,11 +9,14 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const supabase = createClient()
-  
-  // Usa getSession em vez de getUser para consistência com o middleware
-  const { data: { session } } = await supabase.auth.getSession()
 
-  if (!session) redirect('/login')
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
 
   const [{ count: triagemCount }, { count: filaCount }] = await Promise.all([
     supabase
