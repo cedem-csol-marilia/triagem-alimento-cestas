@@ -31,6 +31,8 @@ interface RespostaNova {
   cand_score: number | null
   cand_status: string | null
   cand_ciclos_anteriores: number
+  cand_ja_recebeu: boolean
+  cand_ultima_entrega: string | null
 }
 
 interface DuplicataDetectada {
@@ -167,6 +169,13 @@ export default function TriagemPage() {
                       esq={{ label: 'Nova resposta', dados: [['Nome', item.nome_raw], ['WhatsApp', item.whatsapp_raw], ['Endereço', item.endereco_raw], ['CEP', item.cep_raw], ['Bairro', item.bairro_raw], ['Ref.', item.ponto_referencia_raw]] }}
                       dir={{ label: 'Cadastro existente', dados: [['Nome', item.cand_nome], ['WhatsApp', item.cand_whatsapp], ['Endereço', item.cand_endereco], ['CEP', item.cand_cep], ['Bairro', item.cand_bairro], ['Ref.', item.cand_ponto_ref], ['Score', item.cand_score ? `${item.cand_score} pts · ${item.cand_status}` : null]] }}
                     />
+                    {item.cand_ja_recebeu && (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--mogno-500)', background: 'var(--mogno-100)', border: '1px solid var(--mogno-300)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                        ⚠️ Esta candidata <strong>já recebeu cesta</strong>
+                        {item.cand_ultima_entrega ? ` (última entrega: ${item.cand_ultima_entrega.split('-').reverse().join('/')})` : ''}.
+                        Se for a mesma família, marque <strong>Recadastro</strong> para não enviar cesta repetida.
+                      </div>
+                    )}
                     <CampoObs value={obs[item.resposta_id] ?? ''} onChange={v => setObs(p => ({ ...p, [item.resposta_id]: v }))} />
                     {feedback?.id === item.resposta_id && <FeedbackAlert feedback={feedback} />}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>

@@ -1,11 +1,21 @@
 -- ============================================================
--- FUNÇÃO: detectar_duplicatas()
--- Chamada por: botão "🔍 Detectar duplicatas" na tela de Triagem.
--- Papel: compara cadastros EXISTENTES entre si (familia x familia) e
---        registra pares suspeitos em duplicatas_detectadas para revisão.
+-- Migration: baixa o corte de similaridade de 40 para 30
+-- Data: 2026-06-09
 --
--- Versão CORRIGIDA (canônica). Ver migration:
---   migrations/20260609120000_fix_detectar_duplicatas.sql
+-- MOTIVO
+--   Diagnóstico mostrou que duplicatas reais de MESMO endereço
+--   pontuam exatamente 30 ("CEP + endereço com número idêntico (+30)"),
+--   logo abaixo do corte anterior de 40 — por isso não apareciam.
+--   Ex.: Erika x Tauane (general irulegui cunha 644), cluster da
+--   secundino 364, cluster do CEP 03152150 (jacaraipe).
+--
+--   Endereço idêntico sozinho já é sinal suficiente para REVISÃO manual
+--   (a pessoa decide "mesma casa" ou "casas separadas" na tela).
+--
+-- EFEITO COLATERAL ESPERADO
+--   Vão aparecer também famílias diferentes no mesmo prédio/número.
+--   Isso é intencional: é uma fila de revisão. Marcar "Casas separadas"
+--   quando não houver parentesco.
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.detectar_duplicatas()
  RETURNS integer
@@ -20,7 +30,7 @@ begin
     from familias f1
     join familias f2 on f1.id < f2.id
     cross join lateral calcular_similaridade_familias(f1.id, f2.id) s
-    where s.score >= 30
+    where s.score >= 30          -- antes: 40
   loop
     insert into duplicatas_detectadas
       (familia_id_1, familia_id_2, score, motivos, status)

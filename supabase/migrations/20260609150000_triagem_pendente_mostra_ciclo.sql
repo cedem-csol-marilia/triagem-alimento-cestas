@@ -1,8 +1,17 @@
 -- ============================================================
--- VIEW: triagem_pendente
--- Papel: lista as respostas do Forms ainda não classificadas
---        (dedup_status = 'novo') que têm uma família candidata.
---        Alimenta a seção "Novas respostas do Forms" na tela de Triagem.
+-- Migration: triagem_pendente mostra histórico de entrega da candidata
+-- Data: 2026-06-09
+--
+-- OBJETIVO
+--   Num cadastro novo, avisar se a família candidata (a que o matching
+--   apontou como possível duplicata) JÁ RECEBEU cesta. Assim, na triagem,
+--   dá pra marcar "Recadastro" e não mandar cesta repetida.
+--
+--   Acrescenta duas colunas à view:
+--     cand_ja_recebeu     -> a candidata tem alguma entrega 'entregue'?
+--     cand_ultima_entrega -> data da última entrega 'entregue'
+--
+--   Isso NÃO é o score de similaridade — é histórico (tabela entregas).
 -- ============================================================
 create or replace view public.triagem_pendente as
  select r.id as resposta_id,

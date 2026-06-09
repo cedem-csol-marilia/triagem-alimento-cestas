@@ -83,14 +83,10 @@ export interface RespostaForms {
   criado_em:               string
 }
 
-// TriagemPendente espelha a view triagem_pendente do Supabase
-// que retorna resposta_id (não id) como chave primária
 export interface TriagemPendente {
-  // Campos da view (resposta_id em vez de id)
   resposta_id:             string
   timestamp_forms:         string | null
   criado_em:               string
-  // Nova resposta
   nome_raw:                string | null
   whatsapp_raw:            string | null
   whatsapp_norm:           string | null
@@ -114,7 +110,6 @@ export interface TriagemPendente {
   confianca_match:         number | null
   candidata_motivos:       string[] | null
   candidata_familia_id:    string | null
-  // Família candidata (lado direito do card)
   cand_nome:               string | null
   cand_whatsapp:           string | null
   cand_endereco:           string | null
@@ -124,6 +119,8 @@ export interface TriagemPendente {
   cand_score:              number | null
   cand_status:             StatusFamilia | null
   cand_ciclos_anteriores:  number
+  cand_ja_recebeu:         boolean
+  cand_ultima_entrega:     string | null
 }
 
 export interface Ciclo {
