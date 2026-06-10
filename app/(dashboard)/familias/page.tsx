@@ -23,6 +23,7 @@ export default function FamiliasPage() {
   const [busca,      setBusca]      = useState('')
   const [filtro,     setFiltro]     = useState<FiltroStatus>('todos')
   const [editando,   setEditando]   = useState<Familia | null>(null)
+  const [feedback,   setFeedback]   = useState<{ msg: string; tipo: 'ok' | 'erro' } | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -35,6 +36,18 @@ export default function FamiliasPage() {
   }, [supabase])
 
   useEffect(() => { carregar() }, [carregar])
+
+  async function removerDoCiclo(f: Familia) {
+    if (!confirm(`Remover ${f.nome_responsavel} do ciclo? Ela volta para a fila.`)) return
+    const { error } = await supabase.rpc('remover_do_ciclo', { p_familia_id: f.id })
+    if (error) {
+      setFeedback({ msg: error.message, tipo: 'erro' })
+    } else {
+      setFeedback({ msg: `${f.nome_responsavel} voltou para a fila.`, tipo: 'ok' })
+      carregar()
+    }
+    setTimeout(() => setFeedback(null), 4000)
+  }
 
   const filtradas = familias.filter(f => {
     const matchBusca = !busca ||
@@ -74,7 +87,7 @@ export default function FamiliasPage() {
         f.pode_buscar_cedem ? 'Sim' : 'Não',
       ].join(';'))
     ]
-    const blob = new Blob(['\uFEFF' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url  = URL.createObjectURL(blob)
     const a    = document.createElement('a')
     a.href     = url
@@ -119,6 +132,12 @@ export default function FamiliasPage() {
       </div>
 
       <div className="page-content">
+
+        {feedback && (
+          <div className={`alert alert-${feedback.tipo === 'ok' ? 'success' : 'error'}`} style={{ marginBottom: 'var(--space-4)' }}>
+            {feedback.msg}
+          </div>
+        )}
 
         {/* Filtros por status */}
         <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-5)', flexWrap: 'wrap' }}>
@@ -219,15 +238,27 @@ export default function FamiliasPage() {
                       </span>
                     </td>
                     <td>
-                      {f.status !== 'inativa' && (
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => setEditando(f)}
-                          style={{ fontSize: '0.72rem' }}
-                        >
-                          Editar
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        {(f.status === 'confirmada' || f.status === 'ativa') && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => removerDoCiclo(f)}
+                            style={{ fontSize: '0.72rem', color: 'var(--mogno-500)' }}
+                            title="Remove do ciclo e devolve à fila (só antes de receber a 1ª cesta)"
+                          >
+                            Remover do ciclo
+                          </button>
+                        )}
+                        {f.status !== 'inativa' && (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setEditando(f)}
+                            style={{ fontSize: '0.72rem' }}
+                          >
+                            Editar
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
