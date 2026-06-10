@@ -1,10 +1,14 @@
 'use client'
 // app/auth/atualizar-senha/page.tsx
-// Define uma nova senha. Usada tanto pelo convite (1ª senha) quanto
-// pelo "Esqueci minha senha". Exige uma sessão criada pelo /auth/callback.
+// Define uma nova senha. Serve para CONVITE (1ª senha) e RESET.
+// Se vier com token_hash na URL (convite), verifica no próprio navegador
+// (verifyOtp) — robusto contra falha de cookie servidor→cliente e contra
+// scanners de e-mail (que não executam JavaScript).
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+
+type OtpType = 'invite' | 'recovery' | 'signup' | 'email' | 'email_change'
 
 export default function AtualizarSenhaPage() {
   const supabase = createClient()
@@ -17,7 +21,23 @@ export default function AtualizarSenhaPage() {
   const [temSessao, setTemSessao] = useState<boolean | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setTemSessao(!!data.session))
+    async function init() {
+      const params     = new URLSearchParams(window.location.search)
+      const tokenHash  = params.get('token_hash')
+      const type       = params.get('type') as OtpType | null
+
+      // Convite/recuperação via link com token_hash: verifica aqui no browser
+      if (tokenHash && type) {
+        const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
+        setTemSessao(!error)
+        return
+      }
+
+      // Reset via callback (code): a sessão já foi criada
+      const { data } = await supabase.auth.getSession()
+      setTemSessao(!!data.session)
+    }
+    init()
   }, [supabase])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -46,7 +66,9 @@ export default function AtualizarSenhaPage() {
           <p style={{ fontSize: '0.8rem', color: 'var(--terra-500)' }}>Escolha uma senha para acessar o sistema</p>
         </div>
 
-        {temSessao === false ? (
+        {temSessao === null ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-6)' }}><div className="spinner" /></div>
+        ) : temSessao === false ? (
           <div className="alert alert-error">
             Link inválido ou expirado. Volte ao <a href="/login" style={{ color: 'var(--mogno-500)', fontWeight: 500 }}>login</a> e use &quot;Esqueci minha senha&quot; para receber um novo.
           </div>
@@ -63,7 +85,7 @@ export default function AtualizarSenhaPage() {
               <input className="form-input" type="password" placeholder="••••••••" value={confirma} onChange={e => setConfirma(e.target.value)} required autoComplete="new-password" />
             </div>
             {erro && <div className="alert alert-error" style={{ marginBottom: 'var(--space-4)' }}>{erro}</div>}
-            <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading || temSessao === null}>
+            <button type="submit" className="btn btn-primary btn-full btn-lg" disabled={loading}>
               {loading ? 'Salvando...' : 'Salvar senha'}
             </button>
           </form>
