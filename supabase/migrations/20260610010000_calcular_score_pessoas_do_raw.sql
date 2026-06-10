@@ -1,6 +1,15 @@
--- Snapshot calcular_score (per capita usa raw como fallback; rótulos novos+antigos).
--- Canônico: migrations/20260610010000_calcular_score_pessoas_do_raw.sql
-
+-- ============================================================
+-- Migration: per capita robusto + backfill de num_total_pessoas
+-- Data: 2026-06-10
+--
+-- PROBLEMA: famílias antigas (e as criadas via triagem) têm
+-- num_total_pessoas (int) NULL, só com num_total_pessoas_raw ("2").
+-- A calcular_score assumia 1 pessoa → per capita alto → 0 de renda.
+--
+-- CORREÇÃO:
+--   1. calcular_score usa o número do raw quando o inteiro falta.
+--   2. Backfill preenche num_total_pessoas a partir do raw (dispara recálculo).
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.calcular_score()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -91,3 +100,9 @@ begin
   return new;
 end;
 $function$;
+
+-- Backfill: preenche o inteiro a partir do raw (dispara recálculo via trigger)
+update familias
+set num_total_pessoas = nullif(regexp_replace(coalesce(num_total_pessoas_raw, ''), '[^0-9]', '', 'g'), '')::int
+where num_total_pessoas is null
+  and num_total_pessoas_raw ~ '\d';

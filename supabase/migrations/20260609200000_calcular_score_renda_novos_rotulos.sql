@@ -1,6 +1,13 @@
--- Snapshot calcular_score (per capita usa raw como fallback; rótulos novos+antigos).
--- Canônico: migrations/20260610010000_calcular_score_pessoas_do_raw.sql
-
+-- ============================================================
+-- Migration: calcular_score entende rótulos de renda NOVOS e ANTIGOS
+-- Data: 2026-06-09
+--
+-- O Form novo usa rótulos com ponto de milhar ("de R$ 501 a R$ 1.000",
+-- "Acima de R$ 2.000", "Sem Renda"). O código antigo só casava "1000"/"500"
+-- sem ponto. Esta versão cobre os dois conjuntos (novo e antigo) para que
+-- nem famílias novas nem as 85 já cadastradas zerem a renda no recálculo.
+-- Mantém o resto (auxílio, crianças, idosos, etc.) igual.
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.calcular_score()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -36,26 +43,23 @@ begin
   select peso into p_grande      from config_pesos_priorizacao where criterio = 'familia_grande'   and ativo;
   select peso into p_nao_busca   from config_pesos_priorizacao where criterio = 'nao_busca_cedem'  and ativo;
 
-  rl := lower(coalesce(new.renda_faixa, ''));
-  -- nº de pessoas: usa o inteiro; se nulo, extrai dígitos do raw; senão 1
-  v_pessoas := greatest(coalesce(
-                 new.num_total_pessoas,
-                 nullif(regexp_replace(coalesce(new.num_total_pessoas_raw, ''), '[^0-9]', '', 'g'), '')::int,
-                 1), 1);
+  rl        := lower(coalesce(new.renda_faixa, ''));
+  v_pessoas := greatest(coalesce(new.num_total_pessoas, 1), 1);
 
+  -- Renda per capita: usa real se existir; senão estima pela faixa (cobre rótulos novos e antigos)
   if new.renda_per_capita is not null then
     v_pc := new.renda_per_capita;
   else
     if    rl like '%sem%renda%' or rl like '%nenhum%'        then v_est := 0;
     elsif rl like '%acima%'                                  then v_est := 2500;
-    elsif rl like '%1.501%' or rl like '%1501%'              then v_est := 1750;
-    elsif rl like '%2.000%' or rl like '%2000%'              then v_est := 1500;
-    elsif rl like '%1.001%' or rl like '%1001%'              then v_est := 1250;
-    elsif rl like '%1.500%' or rl like '%1500%'              then v_est := 1250;
-    elsif rl like '%501%'                                    then v_est := 750;
-    elsif rl like '%menos%'                                  then v_est := 250;
-    elsif rl like '%1.000%' or rl like '%1000%'              then v_est := 750;
-    elsif rl like '%ate%' or rl like '%500%'                 then v_est := 250;
+    elsif rl like '%1.501%' or rl like '%1501%'              then v_est := 1750;  -- novo 1.501–2.000
+    elsif rl like '%2.000%' or rl like '%2000%'              then v_est := 1500;  -- antigo 1000–2000
+    elsif rl like '%1.001%' or rl like '%1001%'              then v_est := 1250;  -- novo 1.001–1.500
+    elsif rl like '%1.500%' or rl like '%1500%'              then v_est := 1250;  -- antigo 1000–1500
+    elsif rl like '%501%'                                    then v_est := 750;   -- novo 501–1.000
+    elsif rl like '%menos%'                                  then v_est := 250;   -- antigo menos que 500
+    elsif rl like '%1.000%' or rl like '%1000%'              then v_est := 750;   -- antigo 500–1000
+    elsif rl like '%ate%' or rl like '%500%'                 then v_est := 250;   -- novo até 500
     else  v_est := null;
     end if;
     if v_est is not null then v_pc := v_est / v_pessoas; else v_pc := null; end if;
@@ -68,24 +72,32 @@ begin
     end if;
   end if;
 
+  -- Sem auxílio: credita quem NÃO recebe (sem 'bolsa' e sem 'sim') e sem auxílio do governo
   v_aux := lower(coalesce(new.auxilio_acao_social, ''));
-  v_recebe_aux := (new.auxilio_renda_gov = true) or v_aux like '%bolsa%' or v_aux like 'sim%';
-  if not v_recebe_aux then s := s + coalesce(p_sem_aux, 10); end if;
+  v_recebe_aux := (new.auxilio_renda_gov = true)
+                  or v_aux like '%bolsa%'
+                  or v_aux like 'sim%';
+  if not v_recebe_aux then
+    s := s + coalesce(p_sem_aux, 10);
+  end if;
 
+  -- Crianças
   if    new.num_criancas >= 4 then s := s + coalesce(p_cri_4, 28);
   elsif new.num_criancas =  3 then s := s + coalesce(p_cri_3, 22);
   elsif new.num_criancas =  2 then s := s + coalesce(p_cri_2, 15);
   elsif new.num_criancas =  1 then s := s + coalesce(p_cri_1,  8);
   end if;
 
+  -- Idosos
   if    new.num_idosos >= 2 then s := s + coalesce(p_ido_2, 18);
   elsif new.num_idosos =  1 then s := s + coalesce(p_ido_1, 12);
   end if;
 
+  -- Vulnerabilidades
   if new.tem_pcd                   then s := s + coalesce(p_pcd,      12); end if;
   if new.monoparental              then s := s + coalesce(p_mono,     12); end if;
   if new.pode_buscar_cedem = false then s := s + coalesce(p_nao_busca, 3); end if;
-  if v_pessoas >= 5                then s := s + coalesce(p_grande,    5); end if;
+  if coalesce(new.num_total_pessoas, 0) >= 5 then s := s + coalesce(p_grande, 5); end if;
 
   new.score := s;
   return new;

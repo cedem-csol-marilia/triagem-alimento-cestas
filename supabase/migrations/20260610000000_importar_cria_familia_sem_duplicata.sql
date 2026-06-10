@@ -1,6 +1,17 @@
--- Snapshot importar_resposta_forms (cria família quando não há duplicata; _norm são geradas).
--- Canônico: migrations/20260610000000_importar_cria_familia_sem_duplicata.sql
-
+-- ============================================================
+-- Migration: importar_resposta_forms cria família quando NÃO há duplicata
+-- Data: 2026-06-10
+--
+-- GAP: respostas sem família candidata ficavam presas em respostas_forms
+-- (dedup_status='novo', candidata nula) e nunca viravam família.
+--
+-- CORREÇÃO:
+--   - Com candidata  -> vai pra triagem (igual antes).
+--   - Sem candidata  -> cria a família direto na fila, mapeando os campos.
+--
+-- NOTA: whatsapp_norm / endereco_norm / cep_norm são colunas GERADAS em
+-- familias (o banco calcula sozinho), por isso NÃO entram no insert.
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.importar_resposta_forms(
   p_timestamp timestamp with time zone, p_nome text, p_reside_sp text,
   p_aceita_responsabilidade text, p_endereco text, p_bairro text,
@@ -97,3 +108,42 @@ begin
   return v_result;
 end;
 $function$;
+
+-- ------------------------------------------------------------
+-- Backfill: cria a família das respostas que ficaram presas
+-- (novo, sem candidata e sem família). Colunas _norm são geradas.
+-- ------------------------------------------------------------
+do $$
+declare r record; v_total int; v_fid uuid;
+begin
+  for r in
+    select * from respostas_forms
+    where dedup_status = 'novo'
+      and candidata_familia_id is null
+      and familia_id is null
+      and timestamp_forms is not null
+  loop
+    v_total := nullif(regexp_replace(coalesce(r.num_pessoas_raw, ''), '[^0-9]', '', 'g'), '')::int;
+    insert into familias (
+      nome_responsavel, whatsapp, endereco,
+      bairro, cep, cidade, ponto_referencia, reside_sp,
+      num_total_pessoas_raw, num_total_pessoas, num_criancas, num_idosos,
+      renda_faixa, tem_pcd, pcd_descricao, auxilio_acao_social, auxilio_renda_gov,
+      interesse_curso, pode_buscar_cedem, frequenta_cedem, aceita_responsabilidade,
+      status, ids_respostas_forms
+    ) values (
+      r.nome_raw, r.whatsapp_raw, r.endereco_raw,
+      r.bairro_raw, r.cep_raw, r.cidade_raw, r.ponto_referencia_raw,
+      (lower(coalesce(r.reside_sp_raw, '')) like 'sim%'),
+      r.num_pessoas_raw, v_total, coalesce(r.num_criancas_raw, 0), coalesce(r.num_idosos_raw, 0),
+      r.renda_raw, (lower(coalesce(r.tem_pcd_raw, '')) like 'sim%'), r.pcd_descricao_raw,
+      r.auxilio_acao_social_raw, (lower(coalesce(r.auxilio_renda_gov_raw, '')) like 'sim%'),
+      coalesce(lower(coalesce(r.interesse_curso_raw, '')) ~ '(empregab|alfabet)', false),
+      (lower(coalesce(r.pode_buscar_cedem_raw, '')) like 'sim%'),
+      (lower(coalesce(r.frequenta_cedem_raw, '')) like 'sim%'),
+      (lower(coalesce(r.aceita_responsabilidade_raw, '')) like 'sim%'),
+      'fila', array[r.id]
+    ) returning id into v_fid;
+    update respostas_forms set familia_id = v_fid, dedup_status = 'separado' where id = r.id;
+  end loop;
+end $$;
