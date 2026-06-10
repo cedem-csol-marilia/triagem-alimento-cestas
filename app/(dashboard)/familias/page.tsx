@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Familia } from '@/types'
 import EditarFamiliaModal from '@/components/ui/EditarFamiliaModal'
+import FichaFamiliaModal from '@/components/ui/FichaFamiliaModal'
 
 type FiltroStatus = 'todos' | 'fila' | 'confirmada' | 'ativa' | 'concluida' | 'inativa'
 
@@ -23,6 +24,7 @@ export default function FamiliasPage() {
   const [busca,      setBusca]      = useState('')
   const [filtro,     setFiltro]     = useState<FiltroStatus>('todos')
   const [editando,   setEditando]   = useState<Familia | null>(null)
+  const [fichaId,    setFichaId]    = useState<string | null>(null)
   const [feedback,   setFeedback]   = useState<{ msg: string; tipo: 'ok' | 'erro' } | null>(null)
 
   const carregar = useCallback(async () => {
@@ -108,6 +110,14 @@ export default function FamiliasPage() {
           familia={editando}
           onClose={() => setEditando(null)}
           onSalvo={() => { setEditando(null); carregar() }}
+        />
+      )}
+
+      {fichaId && (
+        <FichaFamiliaModal
+          familiaId={fichaId}
+          onClose={() => setFichaId(null)}
+          onEditar={(f) => { setFichaId(null); setEditando(f) }}
         />
       )}
 
@@ -204,7 +214,9 @@ export default function FamiliasPage() {
                 {filtradas.map(f => (
                   <tr key={f.id} style={{ opacity: f.status === 'inativa' ? 0.6 : 1 }}>
                     <td>
-                      <div style={{ fontWeight: 500, color: 'var(--terra-900)' }}>{f.nome_responsavel}</div>
+                      <button onClick={() => setFichaId(f.id)} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontWeight: 500, color: 'var(--terra-900)', fontFamily: 'var(--font-body)', fontSize: '0.85rem' }}>
+                        {f.nome_responsavel}
+                      </button>
                       <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>{f.endereco ?? '—'}</div>
                     </td>
                     <td style={{ fontSize: '0.82rem' }}>{f.bairro ?? '—'}</td>

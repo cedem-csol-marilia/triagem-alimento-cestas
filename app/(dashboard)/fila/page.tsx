@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { FilaPriorizada } from '@/types'
+import FichaFamiliaModal from '@/components/ui/FichaFamiliaModal'
 
 interface FamiliaRecebeu {
   id: string
@@ -30,6 +31,7 @@ export default function FilaPage() {
   const [confirmando,  setConfirmando]  = useState(false)
   const [dataInicio,   setDataInicio]   = useState('')
   const [feedback,     setFeedback]     = useState<{ msg: string; tipo: 'ok' | 'erro' } | null>(null)
+  const [fichaId,      setFichaId]      = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -115,6 +117,10 @@ export default function FilaPage() {
 
   return (
     <>
+      {fichaId && (
+        <FichaFamiliaModal familiaId={fichaId} onClose={() => setFichaId(null)} />
+      )}
+
       <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
         <div>
           <h1 className="page-title">Fila de Prioridade</h1>
@@ -228,7 +234,7 @@ export default function FilaPage() {
                         </td>
                         <td style={{ color: 'var(--terra-400)', fontWeight: 500 }}>{f.posicao_fila}</td>
                         <td>
-                          <div style={{ fontWeight: 500, color: 'var(--terra-900)' }}>{f.nome_responsavel}</div>
+                          <button onClick={(ev) => { ev.stopPropagation(); setFichaId(f.id) }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontWeight: 500, color: 'var(--terra-900)', fontFamily: 'var(--font-body)', fontSize: '0.85rem' }}>{f.nome_responsavel}</button>
                           <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>
                             {f.whatsapp ?? '—'}
                             {f.pode_buscar_cedem && <span style={{ marginLeft: 6, color: 'var(--musgo-500)' }}>• busca no CEDEM</span>}
@@ -293,7 +299,7 @@ export default function FilaPage() {
                     return (
                       <tr key={f.id}>
                         <td>
-                          <div style={{ fontWeight: 500, color: 'var(--terra-900)' }}>{f.nome_responsavel}</div>
+                          <button onClick={(ev) => { ev.stopPropagation(); setFichaId(f.id) }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontWeight: 500, color: 'var(--terra-900)', fontFamily: 'var(--font-body)', fontSize: '0.85rem' }}>{f.nome_responsavel}</button>
                           <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>{f.whatsapp ?? '—'}</div>
                         </td>
                         <td style={{ fontSize: '0.82rem' }}>{f.bairro ?? '—'}</td>
