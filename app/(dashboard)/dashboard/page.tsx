@@ -64,7 +64,7 @@ export default function DashboardPage() {
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'confirmada'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'ativa'),
         supabase.from('respostas_forms').select('*', { count: 'exact', head: true }).eq('dedup_status', 'novo'),
-        supabase.from('entregas').select('*', { count: 'exact', head: true }).eq('status', 'pendente'),
+        supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).eq('status', 'pendente').eq('mes_referencia', mesAtual),
         supabase.from('familias').select('*', { count: 'exact', head: true }).neq('status', 'inativa'),
         supabase.from('cadastro_incompleto').select('*', { count: 'exact', head: true }),
         supabase.from('duplicatas_detectadas').select('*', { count: 'exact', head: true }).eq('status', 'pendente'),
@@ -105,7 +105,7 @@ export default function DashboardPage() {
   // Próximo ciclo: 3 meses a partir de hoje
   const proximoCicloInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1)
   const proximoCicloFim    = new Date(hoje.getFullYear(), hoje.getMonth() + 3, 0)
-  const formatarData       = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+  const formatarData       = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   if (loading) return (
     <><div className="page-header"><h1 className="page-title">Dashboard</h1><p className="page-subtitle">{dataFormatada}</p></div>

@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { formatarData as fmtData } from '@/lib/formatarData'
 import type { Familia } from '@/types'
 
 interface Props {
@@ -21,11 +22,6 @@ const LABELS_ENTREGA: Record<string, string> = {
 }
 const LABELS_CICLO: Record<string, string> = {
   confirmado: 'Confirmado', em_curso: 'Em curso', encerrado: 'Encerrado',
-}
-
-function fmtData(d: string | null | undefined) {
-  if (!d) return '—'
-  return d.slice(0, 10).split('-').reverse().join('/')
 }
 
 export default function FichaFamiliaModal({ familiaId, onClose, onEditar }: Props) {

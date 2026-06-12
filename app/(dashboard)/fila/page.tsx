@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { formatarData } from '@/lib/formatarData'
 import type { FilaPriorizada } from '@/types'
 import FichaFamiliaModal from '@/components/ui/FichaFamiliaModal'
 
@@ -103,11 +104,6 @@ export default function FilaPage() {
     if (diff < 30) return `${diff} dias`
     const meses = Math.ceil(diff / 30)
     return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
-  }
-
-  function formatarData(d: string | null): string {
-    if (!d) return '—'
-    return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
   }
 
   if (loading) return (

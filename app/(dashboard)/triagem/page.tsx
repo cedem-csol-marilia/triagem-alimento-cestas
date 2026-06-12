@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { formatarData } from '@/lib/formatarData'
 import type { DecisaoTriagem } from '@/types'
 
 interface RespostaNova {
@@ -79,11 +80,11 @@ export default function TriagemPage() {
     const { error } = await supabase.from('respostas_forms').update({
       dedup_status: decisao === 'mesma_casa' ? 'mesma_casa' : decisao === 'casas_separadas' ? 'separado' : decisao === 'recadastro' ? 'recadastro' : 'ignorado',
       decisao, decidido_em: new Date().toISOString(), decidido_obs: obs[item.resposta_id] ?? null,
-      familia_id: decisao === 'mesma_casa' ? item.candidata_familia_id : undefined,
+      familia_id: decisao === 'mesma_casa' || decisao === 'recadastro' ? item.candidata_familia_id : undefined,
     }).eq('id', item.resposta_id)
 
     if (!error && decisao === 'casas_separadas') {
-      await supabase.from('familias').insert({
+      const { data: novaFamilia } = await supabase.from('familias').insert({
         nome_responsavel: item.nome_raw, whatsapp: item.whatsapp_raw,
         endereco: item.endereco_raw, bairro: item.bairro_raw, cep: item.cep_raw,
         ponto_referencia: item.ponto_referencia_raw, num_total_pessoas_raw: item.num_pessoas_raw,
@@ -91,7 +92,10 @@ export default function TriagemPage() {
         renda_faixa: item.renda_raw, tem_pcd: item.tem_pcd_raw?.toLowerCase() === 'sim',
         pode_buscar_cedem: item.pode_buscar_cedem_raw?.toLowerCase() === 'sim',
         status: 'fila', ids_respostas_forms: [item.resposta_id],
-      })
+      }).select('id').single()
+      if (novaFamilia) {
+        await supabase.from('respostas_forms').update({ familia_id: novaFamilia.id }).eq('id', item.resposta_id)
+      }
     }
     mostrarFeedback(item.resposta_id, error)
   }
@@ -160,9 +164,9 @@ export default function TriagemPage() {
         {respostas.length > 0 && (
           <div style={{ marginBottom: 'var(--space-8)' }}>
             <SectionTitle title="Novas respostas do Forms" count={respostas.length} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 520px), 1fr))', gap: 'var(--space-5)', alignItems: 'start' }}>
               {respostas.map(item => (
-                <div key={item.resposta_id} className="card" style={{ overflow: 'hidden', maxWidth: 720 }}>
+                <div key={item.resposta_id} className="card" style={{ overflow: 'hidden' }}>
                   <CardHeader titulo="Nova resposta — possível duplicata" confianca={item.confianca_match ?? 0} motivos={item.candidata_motivos ?? []} />
                   <div style={{ padding: 'var(--space-5)' }}>
                     <ComparacaoLados
@@ -172,7 +176,7 @@ export default function TriagemPage() {
                     {item.cand_ja_recebeu && (
                       <div style={{ fontSize: '0.78rem', color: 'var(--mogno-500)', background: 'var(--mogno-100)', border: '1px solid var(--mogno-300)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                         ⚠️ Esta candidata <strong>já recebeu cesta</strong>
-                        {item.cand_ultima_entrega ? ` (última entrega: ${item.cand_ultima_entrega.split('-').reverse().join('/')})` : ''}.
+                        {item.cand_ultima_entrega ? ` (última entrega: ${formatarData(item.cand_ultima_entrega)})` : ''}.
                         Se for a mesma família, marque <strong>Recadastro</strong> para não enviar cesta repetida.
                       </div>
                     )}
@@ -191,9 +195,9 @@ export default function TriagemPage() {
         {duplicatas.length > 0 && (
           <div>
             <SectionTitle title="Duplicatas entre cadastros existentes" count={duplicatas.length} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 520px), 1fr))', gap: 'var(--space-5)', alignItems: 'start' }}>
               {duplicatas.map(dup => (
-                <div key={dup.id} className="card" style={{ overflow: 'hidden', maxWidth: 720 }}>
+                <div key={dup.id} className="card" style={{ overflow: 'hidden' }}>
                   <CardHeader titulo="Dois cadastros — mesma casa?" confianca={dup.score} motivos={dup.motivos ?? []} cor="var(--terra-700)" />
                   <div style={{ padding: 'var(--space-5)' }}>
                     <ComparacaoLados
