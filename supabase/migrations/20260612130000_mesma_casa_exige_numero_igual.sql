@@ -1,9 +1,25 @@
--- Snapshot de calcular_similaridade_familias.
--- Regra: "mesma casa" = mesmo CEP + endereço >= 0.7 (similarity normal) +
--- TODOS os números do endereço idênticos; composição familiar só conta na
--- mesma casa. Lê config_pesos_duplicacao.
--- Canônico em migrations/20260612150000_reverte_endereco_contido_add_par_manual.sql
--- (a 20260612140000 com word_similarity foi revertida: permissiva demais).
+-- ============================================================
+-- Migration: "mesma casa" exige número igual; composição só conta
+--            quando é a mesma casa de verdade
+-- Data: 2026-06-12
+--
+-- CONTEXTO (por que ainda havia 39 pares após 20260612120000)
+--   1. O tier forte "+30 endereço com número" usava só similaridade 0.7,
+--      então "rua jacaraipe 210" x "rua jacaraipe 14" contava como
+--      endereço idêntico — números DIFERENTES passavam.
+--   2. A composição familiar (+20) contava com qualquer sinal fraco de
+--      endereço (mesmo CEP ou rua parecida). CEP cobre a rua inteira:
+--      duas famílias de 4 pessoas na mesma rua somavam 10+20 = 30 e
+--      entravam na fila.
+--
+-- REGRA NOVA
+--   v_mesma_casa = mesmo CEP + endereço >= 0.7 + MESMOS NÚMEROS no
+--   endereço (extraídos por regex; tolera typo no nome da rua, mas o
+--   número tem que bater).
+--   - Tier +30 só com v_mesma_casa e número presente.
+--   - Composição familiar (+20) só com v_mesma_casa.
+--   - Mesmo CEP ou rua parecida sem número igual: só +10, como sempre.
+-- ============================================================
 
 CREATE OR REPLACE FUNCTION public.calcular_similaridade_familias(p_id1 uuid, p_id2 uuid)
  RETURNS TABLE(score numeric, motivos text[])
@@ -65,7 +81,7 @@ begin
     end if;
   end if;
 
-  -- Composição familiar: SÓ quando é a mesma casa
+  -- Composição familiar: SÓ quando é a mesma casa de verdade
   v_peso := peso_dup('composicao_igual');
   if v_peso > 0
      and v_mesma_casa
@@ -99,3 +115,21 @@ begin
   return query select least(round(v_score, 1), 100), v_motivos;
 end;
 $function$;
+
+-- ------------------------------------------------------------
+-- CONFERÊNCIA (rode antes do delete): quantos pendentes sobrevivem
+-- com a regra nova, e por quê.
+--
+--    select s.score, s.motivos, count(*)
+--    from duplicatas_detectadas d
+--    cross join lateral calcular_similaridade_familias(d.familia_id_1, d.familia_id_2) s
+--    where d.status = 'pendente'
+--    group by s.score, s.motivos
+--    order by s.score desc;
+-- ------------------------------------------------------------
+
+-- Limpeza: apaga só os PENDENTES e re-detecta
+delete from duplicatas_detectadas where status = 'pendente';
+select detectar_duplicatas();
+
+-- Verificação: select count(*) from duplicatas_detectadas where status = 'pendente';

@@ -18,6 +18,7 @@ export default function EditarFamiliaModal({ familia, onClose, onSalvo }: Props)
 
   const [form, setForm] = useState({
     endereco:            familia.endereco            ?? '',
+    complemento:         familia.complemento         ?? '',
     bairro:              familia.bairro              ?? '',
     cep:                 familia.cep                 ?? '',
     ponto_referencia:    familia.ponto_referencia    ?? '',
@@ -41,6 +42,7 @@ export default function EditarFamiliaModal({ familia, onClose, onSalvo }: Props)
       .from('familias')
       .update({
         endereco:              form.endereco              || null,
+        complemento:           form.complemento           || null,
         bairro:                form.bairro               || null,
         cep:                   form.cep                  || null,
         ponto_referencia:      form.ponto_referencia     || null,
@@ -101,8 +103,13 @@ export default function EditarFamiliaModal({ familia, onClose, onSalvo }: Props)
             </div>
 
             <div className="form-group">
-              <label className="form-label">Endereço completo (rua, número, complemento)</label>
-              <input className="form-input" type="text" value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Ex: Rua das Flores, 123, apto 2" />
+              <label className="form-label">Endereço (rua e número)</label>
+              <input className="form-input" type="text" value={form.endereco} onChange={e => set('endereco', e.target.value)} placeholder="Ex: Rua das Flores, 123" />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Complemento</label>
+              <input className="form-input" type="text" value={form.complemento} onChange={e => set('complemento', e.target.value)} placeholder="Ex: apto 2, fundos, casa B" />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>

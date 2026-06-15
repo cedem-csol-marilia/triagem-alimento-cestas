@@ -22,6 +22,29 @@ seguir a partir das pendências."
 - importar_resposta_forms cria família na fila quando NÃO há duplicata.
 - supabase/ versionado: migrations + snapshots em schema/.
 
+## Sessão 12/jun — saga das duplicatas (LER ANTES DE MEXER NA REGRA)
+Fila explodiu de 11 → 47. Causa: composição familiar (+20) contava sem gate de
+endereço; combinada com sobrenome (+15) passava do corte 30. Iteramos:
+- 20260612120000: composição exige sinal de endereço → 39 (gate fraco demais: CEP).
+- 20260612130000: "mesma casa" = CEP + rua 0.7 + TODOS os números iguais → 6.
+  CONFERIDO NA MÃO (query 20–29 pts): dos 12 logo abaixo do corte, 11 eram
+  vizinhança (correto excluir) e 1 era real (Grace x Tauane Elchin, nº 644,
+  "casa 18" no complemento quebra o match de números).
+- 20260612140000: tentativa de pegar o 644 via word_similarity + número
+  principal → fila foi a 20. REVERTIDA.
+- 20260612150000: volta à regra da 130000 (validada) + insere o par 644
+  manualmente. Estado esperado: fila = 7.
+
+PENDENTE AO RETOMAR:
+1. Confirmar que a 20260612150000 foi aplicada e a fila está em 7.
+2. Commitar tudo (migrations 120000–150000 + snapshot).
+3. REGRA SUSTENTÁVEL (pedido da Marília): a regex no endereço livre é frágil
+   por construção. O caminho durável já estava mapeado abaixo ("DEDUP por CEP
+   + número exato"): colunas separadas `numero` e `complemento` no form e na
+   tabela familias → match exato de número, sem regex, e o caso 644 entra
+   naturalmente. Calibrar contra o gabarito desta sessão: os 6 + Grace/Tauane
+   devem entrar; os 11 vizinhos da query 20–29 NÃO devem.
+
 ## Pendências imediatas
 1. COMMITAR as últimas mudanças:
    git add . ; git commit -m "wip melhorias" ; git push origin main

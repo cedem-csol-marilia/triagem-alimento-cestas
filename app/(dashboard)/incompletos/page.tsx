@@ -3,6 +3,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import EditarFamiliaModal from '@/components/ui/EditarFamiliaModal'
+import type { Familia } from '@/types'
 
 interface CadastroIncompleto {
   id: string
@@ -19,6 +21,7 @@ interface CadastroIncompleto {
   renda_faixa: string | null
   score: number
   criado_em: string
+  contatada_em: string | null
   motivo_incompleto: string
 }
 
@@ -27,6 +30,7 @@ export default function IncompletosPage() {
   const [familias,  setFamilias]  = useState<CadastroIncompleto[]>([])
   const [loading,   setLoading]   = useState(true)
   const [acao,      setAcao]      = useState<string | null>(null)
+  const [editando,  setEditando]  = useState<Familia | null>(null)
   const [feedback,  setFeedback]  = useState<{ msg: string; tipo: 'ok' | 'erro' } | null>(null)
 
   const carregar = useCallback(async () => {
@@ -49,6 +53,29 @@ export default function IncompletosPage() {
       .eq('id', id)
     setFeedback({ msg: error ? 'Erro ao mover.' : 'Família movida para a fila.', tipo: error ? 'erro' : 'ok' })
     setTimeout(() => { setFeedback(null); setAcao(null); carregar() }, 1200)
+  }
+
+  async function marcarContatada(id: string) {
+    setAcao(id)
+    const { error } = await supabase
+      .from('familias')
+      .update({ contatada_em: new Date().toISOString() })
+      .eq('id', id)
+    setFeedback({ msg: error ? 'Erro.' : 'Marcada como contatada.', tipo: error ? 'erro' : 'ok' })
+    setTimeout(() => { setFeedback(null); setAcao(null); carregar() }, 1200)
+  }
+
+  async function abrirEdicao(id: string) {
+    const { data, error } = await supabase.from('familias').select('*').eq('id', id).single()
+    if (error || !data) {
+      setFeedback({ msg: 'Erro ao abrir o cadastro.', tipo: 'erro' })
+      return
+    }
+    setEditando(data as Familia)
+  }
+
+  function formatarDiaMes(s: string) {
+    return new Date(s).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
   }
 
   async function marcarInativa(id: string) {
@@ -128,6 +155,19 @@ export default function IncompletosPage() {
                       }}>
                         {f.motivo_incompleto}
                       </span>
+                      {f.contatada_em && (
+                        <span style={{
+                          background: 'var(--musgo-100)',
+                          color: 'var(--musgo-700)',
+                          fontSize: '0.62rem',
+                          fontWeight: 500,
+                          padding: '2px 8px',
+                          borderRadius: 'var(--radius-pill)',
+                          border: '1px solid var(--musgo-300)',
+                        }}>
+                          ✓ Contatada em {formatarDiaMes(f.contatada_em)}
+                        </span>
+                      )}
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', fontSize: '0.78rem' }}>
@@ -152,6 +192,13 @@ export default function IncompletosPage() {
 
                   {/* Ações */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', minWidth: 180 }}>
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => abrirEdicao(f.id)}
+                      disabled={acao === f.id}
+                    >
+                      ✏️ Completar cadastro
+                    </button>
                     {f.whatsapp && (
                       <a
                         href={`https://wa.me/55${f.whatsapp.replace(/\D/g, '')}?text=Olá! Recebemos seu cadastro para as cestas básicas do CEDEM. Para continuar, precisamos do seu endereço completo com número. Pode nos informar?`}
@@ -163,6 +210,13 @@ export default function IncompletosPage() {
                         📱 Contatar no WhatsApp
                       </a>
                     )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => marcarContatada(f.id)}
+                      disabled={acao === f.id}
+                    >
+                      {f.contatada_em ? 'Contatada ✓' : 'Marcar como contatada'}
+                    </button>
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={() => moverParaFila(f.id)}
@@ -185,6 +239,14 @@ export default function IncompletosPage() {
           </div>
         )}
       </div>
+
+      {editando && (
+        <EditarFamiliaModal
+          familia={editando}
+          onClose={() => setEditando(null)}
+          onSalvo={() => { setEditando(null); carregar() }}
+        />
+      )}
     </>
   )
 }

@@ -46,6 +46,11 @@ interface DuplicataDetectada {
   f2: { nome_responsavel: string; whatsapp: string | null; endereco: string | null; cep: string | null; bairro: string | null; ponto_referencia: string | null; score: number; status: string }
 }
 
+// Status de família já comprometida em um ciclo: não pode ser absorvida
+// numa mesclagem (tem que ser sempre a mantida). Espelha mesclar_familias().
+const STATUS_EM_CICLO = ['confirmada', 'ativa', 'concluida']
+const emCiclo = (status?: string | null) => STATUS_EM_CICLO.includes(status ?? '')
+
 const DECISOES: { id: DecisaoTriagem; label: string; sub: string; style: React.CSSProperties }[] = [
   { id: 'mesma_casa',      label: 'Mesma casa',      sub: 'mesclar com cadastro', style: { background: 'var(--musgo-700)', color: 'var(--musgo-100)', border: '1.5px solid var(--musgo-700)' } },
   { id: 'casas_separadas', label: 'Casas separadas', sub: 'novo cadastro',        style: { background: 'var(--terra-100)', color: 'var(--terra-800)', border: '1.5px solid var(--terra-300)' } },
@@ -102,18 +107,26 @@ export default function TriagemPage() {
 
   async function decidirDuplicata(dup: DuplicataDetectada, decisao: 'mesma_casa' | 'separadas', inativaId?: string) {
     setDecidindo(dup.id)
-    const mantidaId = inativaId === dup.familia_id_1 ? dup.familia_id_2 : dup.familia_id_1
-    const { error } = await supabase.from('duplicatas_detectadas').update({
-      status: decisao, decidido_em: new Date().toISOString(),
-      decidido_obs: obs[dup.id] ?? null,
-      familia_mantida_id: decisao === 'mesma_casa' ? mantidaId : null,
-    }).eq('id', dup.id)
 
-    if (!error && decisao === 'mesma_casa' && inativaId) {
-      await supabase.from('familias').update({
-        status: 'inativa', observacao: 'Mesclada na triagem — duplicata confirmada'
-      }).eq('id', inativaId)
+    if (decisao === 'mesma_casa' && inativaId) {
+      // A regra de merge (trava de ciclo, mover respostas, inativar a
+      // absorvida e carimbar a decisão) vive em mesclar_familias() no banco.
+      const mantidaId = inativaId === dup.familia_id_1 ? dup.familia_id_2 : dup.familia_id_1
+      const { error } = await supabase.rpc('mesclar_familias', {
+        p_manter:   mantidaId,
+        p_absorver: inativaId,
+        p_obs:      obs[dup.id] ?? null,
+      })
+      mostrarFeedback(dup.id, error)
+      return
     }
+
+    // "São separadas" — apenas registra a decisão no par.
+    const { error } = await supabase.from('duplicatas_detectadas').update({
+      status: 'separadas', decidido_em: new Date().toISOString(),
+      decidido_obs: obs[dup.id] ?? null,
+      familia_mantida_id: null,
+    }).eq('id', dup.id)
     mostrarFeedback(dup.id, error)
   }
 
@@ -210,8 +223,8 @@ export default function TriagemPage() {
                     <CampoObs value={obs[dup.id] ?? ''} onChange={v => setObs(p => ({ ...p, [dup.id]: v }))} />
                     {feedback?.id === dup.id && <FeedbackAlert feedback={feedback} />}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-2)' }}>
-                      <BotaoDecisao label={`Manter ${dup.f1?.nome_responsavel?.split(' ')[0]}`} sub="família 1 fica" style={{ background: 'var(--musgo-700)', color: 'var(--musgo-100)', border: '1.5px solid var(--musgo-700)' }} onClick={() => decidirDuplicata(dup, 'mesma_casa', dup.familia_id_2)} disabled={decidindo === dup.id} />
-                      <BotaoDecisao label={`Manter ${dup.f2?.nome_responsavel?.split(' ')[0]}`} sub="família 2 fica" style={{ background: 'var(--musgo-500)', color: 'var(--musgo-100)', border: '1.5px solid var(--musgo-500)' }} onClick={() => decidirDuplicata(dup, 'mesma_casa', dup.familia_id_1)} disabled={decidindo === dup.id} />
+                      <BotaoDecisao label={`Manter ${dup.f1?.nome_responsavel?.split(' ')[0]}`} sub={emCiclo(dup.f2?.status) ? 'F2 está em ciclo' : 'família 1 fica'} style={{ background: 'var(--musgo-700)', color: 'var(--musgo-100)', border: '1.5px solid var(--musgo-700)' }} onClick={() => decidirDuplicata(dup, 'mesma_casa', dup.familia_id_2)} disabled={decidindo === dup.id || emCiclo(dup.f2?.status)} title={emCiclo(dup.f2?.status) ? 'Família 2 está em ciclo e não pode ser inativada' : undefined} />
+                      <BotaoDecisao label={`Manter ${dup.f2?.nome_responsavel?.split(' ')[0]}`} sub={emCiclo(dup.f1?.status) ? 'F1 está em ciclo' : 'família 2 fica'} style={{ background: 'var(--musgo-500)', color: 'var(--musgo-100)', border: '1.5px solid var(--musgo-500)' }} onClick={() => decidirDuplicata(dup, 'mesma_casa', dup.familia_id_1)} disabled={decidindo === dup.id || emCiclo(dup.f1?.status)} title={emCiclo(dup.f1?.status) ? 'Família 1 está em ciclo e não pode ser inativada' : undefined} />
                       <BotaoDecisao label="São separadas" sub="manter os dois" style={{ background: 'var(--terra-100)', color: 'var(--terra-800)', border: '1.5px solid var(--terra-300)' }} onClick={() => decidirDuplicata(dup, 'separadas')} disabled={decidindo === dup.id} />
                     </div>
                   </div>
@@ -307,9 +320,9 @@ function FeedbackAlert({ feedback }: { feedback: { msg: string; tipo: 'ok' | 'er
   return <div className={`alert alert-${feedback.tipo === 'ok' ? 'success' : 'error'}`} style={{ marginBottom: 'var(--space-4)' }}>{feedback.msg}</div>
 }
 
-function BotaoDecisao({ label, sub, style, onClick, disabled }: { label: string; sub: string; style: React.CSSProperties; onClick: () => void; disabled: boolean }) {
+function BotaoDecisao({ label, sub, style, onClick, disabled, title }: { label: string; sub: string; style: React.CSSProperties; onClick: () => void; disabled: boolean; title?: string }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ ...style, padding: 'var(--space-3) var(--space-2)', borderRadius: 'var(--radius-md)', fontSize: '0.75rem', fontWeight: 500, fontFamily: 'var(--font-body)', cursor: 'pointer', lineHeight: 1.3, transition: 'opacity var(--transition)', opacity: disabled ? 0.6 : 1 }}>
+    <button onClick={onClick} disabled={disabled} title={title} style={{ ...style, padding: 'var(--space-3) var(--space-2)', borderRadius: 'var(--radius-md)', fontSize: '0.75rem', fontWeight: 500, fontFamily: 'var(--font-body)', cursor: disabled ? 'not-allowed' : 'pointer', lineHeight: 1.3, transition: 'opacity var(--transition)', opacity: disabled ? 0.6 : 1 }}>
       {label}<br /><span style={{ fontSize: '0.62rem', fontWeight: 300 }}>{sub}</span>
     </button>
   )

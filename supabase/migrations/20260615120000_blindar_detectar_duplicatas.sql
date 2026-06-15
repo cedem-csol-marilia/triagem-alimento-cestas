@@ -1,15 +1,18 @@
 -- ============================================================
--- FUNÇÃO: detectar_duplicatas()
--- Chamada por: botão "🔍 Detectar duplicatas" na tela de Triagem.
--- Papel: compara cadastros EXISTENTES entre si (familia x familia) e
---        registra pares suspeitos em duplicatas_detectadas para revisão.
+-- MIGRATION: blindar detectar_duplicatas()
 --
--- BLINDAGEM (canônico em migrations/20260615120000_blindar_detectar_duplicatas.sql):
+-- Objetivo (pedido da Marília): a detecção nunca deve "ressuscitar"
+-- trabalho de triagem já feito. Duas travas:
 --   1. Ignora famílias status = 'inativa' (já mescladas/absorvidas).
---   2. Não repropõe pares já decididos (status <> 'pendente' em
---      duplicatas_detectadas) — sobrevive ao "apagar pendentes" do recálculo.
--- Versão anterior em migrations/20260609120000_fix_detectar_duplicatas.sql
+--   2. Não repropõe pares JÁ DECIDIDOS — qualquer par que tenha uma
+--      linha em duplicatas_detectadas com status <> 'pendente'
+--      (mesma_casa | separadas | ignorado) fica fora da varredura,
+--      mesmo que os pendentes sejam apagados para recalcular.
+--
+-- O 'on conflict do nothing' já evitava duplicar a linha; aqui a regra
+-- de negócio passa a ser explícita e sobrevive ao "apagar pendentes".
 -- ============================================================
+
 CREATE OR REPLACE FUNCTION public.detectar_duplicatas()
  RETURNS integer
  LANGUAGE plpgsql
@@ -24,8 +27,10 @@ begin
     join familias f2 on f1.id < f2.id
     cross join lateral calcular_similaridade_familias(f1.id, f2.id) s
     where s.score >= 30
+      -- trava 1: famílias já mescladas não entram em par novo
       and f1.status <> 'inativa'
       and f2.status <> 'inativa'
+      -- trava 2: par já decidido (qualquer status != pendente) não volta
       and not exists (
         select 1 from duplicatas_detectadas d
         where d.familia_id_1 = least(f1.id, f2.id)

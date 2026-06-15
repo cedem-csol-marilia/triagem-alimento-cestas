@@ -1,9 +1,21 @@
--- Snapshot de calcular_similaridade_familias.
--- Regra: "mesma casa" = mesmo CEP + endereço >= 0.7 (similarity normal) +
--- TODOS os números do endereço idênticos; composição familiar só conta na
--- mesma casa. Lê config_pesos_duplicacao.
--- Canônico em migrations/20260612150000_reverte_endereco_contido_add_par_manual.sql
--- (a 20260612140000 com word_similarity foi revertida: permissiva demais).
+-- ============================================================
+-- Migration: reverte a regra "endereço contido" (20260612140000)
+--            e adiciona o par Grace x Tauane Elchin manualmente
+-- Data: 2026-06-12
+--
+-- MOTIVO
+--   A 20260612140000 (word_similarity + número principal) fez a fila
+--   subir de 6/7 para 20 — a similaridade "contida" é permissiva demais
+--   com endereços curtos. Voltamos à regra da 20260612130000, que foi
+--   CONFERIDA NA MÃO e produziu uma fila correta de 6 pares:
+--     mesma casa = mesmo CEP + endereço >= 0.7 (similarity normal)
+--                  + TODOS os números do endereço idênticos;
+--     composição familiar só conta na mesma casa.
+--
+--   O único par real que essa regra não pega (Grace x Tauane Elchin,
+--   nº 644, complemento "casa 18" quebra o match) é inserido MANUALMENTE
+--   no fim desta migration. Exceção pontual > regra distorcida.
+-- ============================================================
 
 CREATE OR REPLACE FUNCTION public.calcular_similaridade_familias(p_id1 uuid, p_id2 uuid)
  RETURNS TABLE(score numeric, motivos text[])
@@ -99,3 +111,29 @@ begin
   return query select least(round(v_score, 1), 100), v_motivos;
 end;
 $function$;
+
+-- ------------------------------------------------------------
+-- Limpeza: apaga só os PENDENTES e re-detecta (deve voltar aos 6)
+-- ------------------------------------------------------------
+delete from duplicatas_detectadas where status = 'pendente';
+select detectar_duplicatas();
+
+-- ------------------------------------------------------------
+-- Par manual: Grace x Tauane Elchin (mesmo lote 644, viela do amor)
+-- ------------------------------------------------------------
+insert into duplicatas_detectadas (familia_id_1, familia_id_2, score, motivos, status)
+select least(g.id, t.id), greatest(g.id, t.id), s.score,
+       array_append(s.motivos, 'Adicionado manualmente: mesmo nº 644, sobrenome Elchin'),
+       'pendente'
+from familias g
+join familias t on t.id <> g.id
+cross join lateral calcular_similaridade_familias(g.id, t.id) s
+where g.nome_responsavel ilike '%grace%elchin%'
+  and t.nome_responsavel ilike '%tauane%elchin%'
+on conflict (familia_id_1, familia_id_2) do nothing;
+
+-- ------------------------------------------------------------
+-- VERIFICAÇÃO: deve retornar 7 (os 6 conferidos + o par manual)
+--
+--    select count(*) from duplicatas_detectadas where status = 'pendente';
+-- ------------------------------------------------------------

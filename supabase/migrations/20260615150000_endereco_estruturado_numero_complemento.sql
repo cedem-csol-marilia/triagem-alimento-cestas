@@ -1,8 +1,26 @@
--- Snapshot importar_resposta_forms (cria família quando não há duplicata; _norm são geradas).
--- Endereço estruturado: p_numero entra no `endereco` (rua+número); p_complemento
--- vai pra coluna própria (fora do endereco/endereco_norm). Compatível com o
--- Apps Script antigo (sem esses campos).
--- Canônico: migrations/20260615150000_endereco_estruturado_numero_complemento.sql
+-- ============================================================
+-- MIGRATION: endereço estruturado — complemento em coluna própria
+--
+-- Decisão de desenho: o que quebrava a dedup (caso Elchin) era o complemento
+-- ("casa 18") jogando um número solto dentro do endereço. Então:
+--   - `endereco` guarda só RUA + NÚMERO (o número permanece → dedup por número
+--     segue funcionando e fica confiável).
+--   - `complemento` vira COLUNA PRÓPRIA, fora do endereco e do endereco_norm
+--     (que é GENERATED a partir de endereco) → não polui mais o match.
+--
+-- Colunas:
+--   - respostas_forms: numero_raw, complemento_raw (auditoria do input cru)
+--   - familias:        complemento (o número vive dentro de `endereco`)
+--
+-- importar_resposta_forms ganha p_numero / p_complemento OPCIONAIS:
+--   - Apps Script ANTIGO (sem os campos): comportamento atual, tudo via p_endereco.
+--   - Apps Script NOVO: p_endereco = rua, + p_numero (entra no endereco) +
+--     p_complemento (vai pra coluna própria, fora do endereco).
+-- ============================================================
+
+alter table respostas_forms add column if not exists numero_raw      text;
+alter table respostas_forms add column if not exists complemento_raw text;
+alter table familias        add column if not exists complemento     text;
 
 CREATE OR REPLACE FUNCTION public.importar_resposta_forms(
   p_timestamp timestamp with time zone, p_nome text, p_reside_sp text,
@@ -29,6 +47,7 @@ declare
   v_total       int;
   v_result      jsonb;
 begin
+  -- endereco = rua + número (complemento NÃO entra aqui; vai em coluna própria).
   if p_numero is not null or p_complemento is not null then
     v_endereco := array_to_string(
       array_remove(array[nullif(trim(p_endereco), ''), nullif(trim(p_numero), '')], null), ', ');

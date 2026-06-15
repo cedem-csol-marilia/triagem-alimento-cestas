@@ -129,12 +129,11 @@ function jaExisteNoSupabase(timestampISO) {
 function enviarLinha(dados, mapa, linha) {
   function v(campo) { var i = mapa[campo]; return (i == null || i < 0) ? null : limpar(dados[i]); }
 
-  // Junta rua + número + complemento num endereço limpo
+  // Endereço estruturado: manda rua, número e complemento SEPARADOS.
+  // Quem monta o endereço completo é a função importar_resposta_forms no banco.
   var rua  = v('endereco');
   var num  = v('numero');
   var comp = v('complemento');
-  var enderecoCompleto = [rua, num].filter(Boolean).join(', ');
-  if (comp) enderecoCompleto += ' - ' + comp;
 
   try {
     var payload = {
@@ -142,7 +141,9 @@ function enviarLinha(dados, mapa, linha) {
       p_nome:                    v('nome'),
       p_reside_sp:               v('reside_sp'),
       p_aceita_responsabilidade: v('aceita_resp'),
-      p_endereco:                enderecoCompleto || null,
+      p_endereco:                rua,
+      p_numero:                  num,
+      p_complemento:             comp,
       p_bairro:                  v('bairro'),
       p_ponto_referencia:        v('ponto_ref'),
       p_cidade:                  v('cidade'),

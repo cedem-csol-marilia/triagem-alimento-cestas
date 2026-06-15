@@ -4,6 +4,7 @@
 export type StatusFamilia  = 'fila' | 'confirmada' | 'ativa' | 'concluida' | 'inativa'
 export type StatusCiclo    = 'confirmado' | 'em_curso' | 'encerrado'
 export type StatusEntrega  = 'pendente' | 'entregue' | 'nao_entregue'
+export type TipoEntrega    = 'ciclo' | 'avulsa'
 export type DedupStatus    = 'novo' | 'mesma_casa' | 'recadastro' | 'separado' | 'ignorado'
 export type DecisaoTriagem = 'mesma_casa' | 'casas_separadas' | 'recadastro' | 'ignorar'
 
@@ -14,6 +15,7 @@ export interface Familia {
   whatsapp_norm:           string | null
   endereco:                string | null
   endereco_norm:           string | null
+  complemento:             string | null
   bairro:                  string | null
   cep:                     string | null
   cep_norm:                string | null
@@ -138,7 +140,8 @@ export interface Ciclo {
 
 export interface Entrega {
   id:                string
-  ciclo_id:          string
+  ciclo_id:          string | null
+  tipo:              TipoEntrega
   familia_id:        string
   mes_referencia:    string
   data_entrega:      string | null
@@ -158,7 +161,7 @@ export interface PainelEntrega extends Entrega {
   ponto_referencia:  string | null
   pode_buscar_cedem: boolean
   num_total_pessoas: number | null
-  ciclo_inicio:      string
-  ciclo_fim:         string
-  ciclo_status:      StatusCiclo
+  ciclo_inicio:      string | null
+  ciclo_fim:         string | null
+  ciclo_status:      StatusCiclo | null
 }
