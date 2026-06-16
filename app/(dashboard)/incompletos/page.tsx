@@ -82,7 +82,7 @@ export default function IncompletosPage() {
     setAcao(id)
     const { error } = await supabase
       .from('familias')
-      .update({ status: 'inativa', observacao: 'Cadastro incompleto — sem contato para solicitar complemento' })
+      .update({ status: 'inativa', motivo_inativacao: 'incompleto', observacao: 'Cadastro incompleto — sem contato para solicitar complemento' })
       .eq('id', id)
     setFeedback({ msg: error ? 'Erro.' : 'Família marcada como inativa.', tipo: error ? 'erro' : 'ok' })
     setTimeout(() => { setFeedback(null); setAcao(null); carregar() }, 1200)

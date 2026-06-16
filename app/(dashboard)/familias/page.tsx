@@ -118,6 +118,7 @@ export default function FamiliasPage() {
           familiaId={fichaId}
           onClose={() => setFichaId(null)}
           onEditar={(f) => { setFichaId(null); setEditando(f) }}
+          onMudou={carregar}
         />
       )}
 
@@ -216,6 +217,7 @@ export default function FamiliasPage() {
                     <td>
                       <button onClick={() => setFichaId(f.id)} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', fontWeight: 500, color: 'var(--terra-900)', fontFamily: 'var(--font-body)', fontSize: '0.85rem' }}>
                         {f.nome_responsavel}
+                        {f.endereco_verificado_em && <span title="Endereço verificado" style={{ marginLeft: 6, color: 'var(--musgo-700)' }}>✓</span>}
                       </button>
                       <div style={{ fontSize: '0.7rem', color: 'var(--terra-400)' }}>{f.endereco ?? '—'}</div>
                     </td>

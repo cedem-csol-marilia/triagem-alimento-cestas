@@ -39,6 +39,8 @@ export interface Familia {
   aceita_responsabilidade: boolean
   score:                   number
   status:                  StatusFamilia
+  motivo_inativacao:       string | null
+  endereco_verificado_em:  string | null
   ids_respostas_forms:     string[] | null
   observacao:              string | null
   criado_em:               string

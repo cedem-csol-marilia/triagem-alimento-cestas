@@ -3,7 +3,7 @@
 // Drawer lateral com a visão 360º de uma família.
 // Reutilizável em Famílias, Fila e Triagem. Recebe só o familiaId.
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarData as fmtData } from '@/lib/formatarData'
 import type { Familia } from '@/types'
@@ -12,6 +12,7 @@ interface Props {
   familiaId: string
   onClose: () => void
   onEditar?: (f: Familia) => void
+  onMudou?: () => void
 }
 
 const LABELS_STATUS: Record<string, string> = {
@@ -24,7 +25,7 @@ const LABELS_CICLO: Record<string, string> = {
   confirmado: 'Confirmado', em_curso: 'Em curso', encerrado: 'Encerrado',
 }
 
-export default function FichaFamiliaModal({ familiaId, onClose, onEditar }: Props) {
+export default function FichaFamiliaModal({ familiaId, onClose, onEditar, onMudou }: Props) {
   const supabase = createClient()
   const [fam,       setFam]       = useState<Familia | null>(null)
   const [ciclos,    setCiclos]    = useState<any[]>([])
@@ -32,29 +33,61 @@ export default function FichaFamiliaModal({ familiaId, onClose, onEditar }: Prop
   const [dups,      setDups]      = useState<any[]>([])
   const [respostas, setRespostas] = useState<any[]>([])
   const [loading,   setLoading]   = useState(true)
+  const [agindo,    setAgindo]    = useState(false)
 
-  useEffect(() => {
-    async function carregar() {
-      setLoading(true)
-      const [f, c, e, d, r] = await Promise.all([
-        supabase.from('familias').select('*').eq('id', familiaId).maybeSingle(),
-        supabase.from('ciclos').select('*').eq('familia_id', familiaId).order('data_inicio', { ascending: false }),
-        supabase.from('entregas').select('*').eq('familia_id', familiaId).order('mes_referencia', { ascending: false }),
-        supabase.from('duplicatas_detectadas')
-          .select('id, familia_id_1, familia_id_2, score, status, f1:familias!familia_id_1(nome_responsavel), f2:familias!familia_id_2(nome_responsavel)')
-          .or(`familia_id_1.eq.${familiaId},familia_id_2.eq.${familiaId}`),
-        supabase.from('respostas_forms').select('id, timestamp_forms, nome_raw, endereco_raw, whatsapp_raw')
-          .eq('familia_id', familiaId).order('timestamp_forms', { ascending: false }),
-      ])
-      setFam((f.data as Familia) ?? null)
-      setCiclos(c.data ?? [])
-      setEntregas(e.data ?? [])
-      setDups((d.data as any[]) ?? [])
-      setRespostas(r.data ?? [])
-      setLoading(false)
-    }
-    carregar()
+  const carregar = useCallback(async () => {
+    setLoading(true)
+    const [f, c, e, d, r] = await Promise.all([
+      supabase.from('familias').select('*').eq('id', familiaId).maybeSingle(),
+      supabase.from('ciclos').select('*').eq('familia_id', familiaId).order('data_inicio', { ascending: false }),
+      supabase.from('entregas').select('*').eq('familia_id', familiaId).order('mes_referencia', { ascending: false }),
+      supabase.from('duplicatas_detectadas')
+        .select('id, familia_id_1, familia_id_2, score, status, f1:familias!familia_id_1(nome_responsavel), f2:familias!familia_id_2(nome_responsavel)')
+        .or(`familia_id_1.eq.${familiaId},familia_id_2.eq.${familiaId}`),
+      supabase.from('respostas_forms').select('id, timestamp_forms, nome_raw, endereco_raw, whatsapp_raw')
+        .eq('familia_id', familiaId).order('timestamp_forms', { ascending: false }),
+    ])
+    setFam((f.data as Familia) ?? null)
+    setCiclos(c.data ?? [])
+    setEntregas(e.data ?? [])
+    setDups((d.data as any[]) ?? [])
+    setRespostas(r.data ?? [])
+    setLoading(false)
   }, [supabase, familiaId])
+
+  useEffect(() => { carregar() }, [carregar])
+
+  async function toggleEnderecoVerificado() {
+    if (!fam) return
+    setAgindo(true)
+    const novo = fam.endereco_verificado_em ? null : new Date().toISOString()
+    await supabase.from('familias').update({ endereco_verificado_em: novo }).eq('id', fam.id)
+    setAgindo(false)
+    await carregar(); onMudou?.()
+  }
+
+  async function desqualificar() {
+    if (!fam) return
+    const motivo = window.prompt('Motivo da desqualificação (aparece na observação):', '')
+    if (motivo === null) return
+    setAgindo(true)
+    await supabase.from('familias').update({
+      status: 'inativa', motivo_inativacao: 'desqualificada',
+      observacao: motivo || 'Desqualificada pela operação',
+    }).eq('id', fam.id)
+    setAgindo(false)
+    await carregar(); onMudou?.()
+  }
+
+  async function reativar() {
+    if (!fam) return
+    if (!window.confirm(`Reativar ${fam.nome_responsavel} e voltar para a fila? Se foi mesclada como duplicata, o merge será desfeito.`)) return
+    setAgindo(true)
+    const { error } = await supabase.rpc('reativar_familia', { p_familia_id: fam.id, p_obs: null })
+    setAgindo(false)
+    if (error) { window.alert('Erro ao reativar: ' + error.message); return }
+    await carregar(); onMudou?.()
+  }
 
   const perfil: string[] = []
   if (fam) {
@@ -107,7 +140,17 @@ export default function FichaFamiliaModal({ familiaId, onClose, onEditar }: Prop
                 <Linha rotulo="WhatsApp" valor={fam.whatsapp ? (
                   <a href={`https://wa.me/55${fam.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--musgo-500)' }}>{fam.whatsapp}</a>
                 ) : '—'} />
-                <Linha rotulo="Endereço" valor={fam.endereco ?? '—'} />
+                <Linha rotulo="Endereço" valor={
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {fam.endereco ?? '—'}
+                    {fam.endereco_verificado_em && (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--musgo-700)', background: 'var(--musgo-100)', border: '1px solid var(--musgo-300)', borderRadius: 'var(--radius-pill)', padding: '1px 7px' }}>
+                        ✓ verificado
+                      </span>
+                    )}
+                  </span>
+                } />
+                {fam.complemento && <Linha rotulo="Complemento" valor={fam.complemento} />}
                 <Linha rotulo="Bairro" valor={fam.bairro ?? '—'} />
                 <Linha rotulo="CEP" valor={fam.cep ?? '—'} />
                 <Linha rotulo="Referência" valor={fam.ponto_referencia ?? '—'} />
@@ -160,9 +203,31 @@ export default function FichaFamiliaModal({ familiaId, onClose, onEditar }: Prop
                 </Secao>
               )}
 
-              {onEditar && fam.status !== 'inativa' && (
-                <button className="btn btn-secondary btn-full" onClick={() => onEditar(fam)}>Editar cadastro</button>
-              )}
+              {/* Ações */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', borderTop: '1px solid var(--terra-100)', paddingTop: 'var(--space-4)' }}>
+                {fam.status === 'inativa' ? (
+                  <>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--terra-500)' }}>
+                      Inativa{fam.motivo_inativacao ? ` · motivo: ${fam.motivo_inativacao}` : ''}.
+                    </div>
+                    <button className="btn btn-musgo btn-full" onClick={reativar} disabled={agindo}>
+                      ↩ Reativar / voltar para a fila
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {onEditar && (
+                      <button className="btn btn-secondary btn-full" onClick={() => onEditar(fam)}>Editar cadastro</button>
+                    )}
+                    <button className="btn btn-ghost btn-full" onClick={toggleEnderecoVerificado} disabled={agindo}>
+                      {fam.endereco_verificado_em ? '✓ Endereço verificado — desmarcar' : 'Marcar endereço como verificado'}
+                    </button>
+                    <button className="btn btn-danger btn-full" onClick={desqualificar} disabled={agindo}>
+                      Desqualificar / tirar da fila
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}
