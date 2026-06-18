@@ -74,20 +74,31 @@ export default function FamiliasPage() {
       alert('Nenhuma família confirmada para o próximo ciclo.')
       return
     }
+    // Ordem espelha a etapa de Entrega do site. A coluna "Notas do pedido" já vem
+    // montada (whatsapp só-dígitos + ponto de referência): cole EXATAMENTE essa
+    // célula no campo "Notas no pedido (opcional)" do site — assim o whatsapp sempre
+    // chega na Observação do e-mail e a automação casa por ele.
+    const cabecalho = ['Nome', 'CEP', 'Endereço', 'Bairro', 'Cidade', 'Ponto de referência', 'WhatsApp', 'Notas do pedido (colar exatamente no site)', 'Total pessoas', 'Crianças', 'Idosos', 'Pode buscar CEDEM']
     const linhas = [
-      ['Nome', 'WhatsApp', 'Endereço', 'Bairro', 'CEP', 'Ponto de referência', 'Total pessoas', 'Crianças', 'Idosos', 'Pode buscar CEDEM'].join(';'),
-      ...confirmadas.map(f => [
-        f.nome_responsavel,
-        f.whatsapp ?? '',
-        f.endereco ?? '',
-        f.bairro ?? '',
-        f.cep ?? '',
-        f.ponto_referencia ?? '',
-        f.num_total_pessoas_raw ?? f.num_total_pessoas ?? '',
-        f.num_criancas,
-        f.num_idosos,
-        f.pode_buscar_cedem ? 'Sim' : 'Não',
-      ].join(';'))
+      cabecalho.join(';'),
+      ...confirmadas.map(f => {
+        const wpp = (f.whatsapp ?? '').replace(/[^0-9]/g, '')
+        const notas = [wpp, f.ponto_referencia ?? ''].filter(Boolean).join(' · ')
+        return [
+          f.nome_responsavel,
+          f.cep ?? '',
+          f.endereco ?? '',
+          f.bairro ?? '',
+          'São Paulo',
+          f.ponto_referencia ?? '',
+          f.whatsapp ?? '',
+          notas,
+          f.num_total_pessoas_raw ?? f.num_total_pessoas ?? '',
+          f.num_criancas,
+          f.num_idosos,
+          f.pode_buscar_cedem ? 'Sim' : 'Não',
+        ].join(';')
+      })
     ]
     const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
     const url  = URL.createObjectURL(blob)
