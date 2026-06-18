@@ -153,6 +153,35 @@ export interface Entrega {
   pedido_obs:        string | null
   observacao:        string | null
   atualizado_em:     string
+  // Automação de entregas (Make) — auditoria + chave de match
+  pedido_loja:       string | null
+  pedido_fiscal:     string | null
+  pedido_mae:        string | null
+  nfe_numero:        string | null
+  nfe_serie:         string | null
+  nfe_emitida_em:    string | null
+  whatsapp_pedido:   string | null
+  motivo_falha:      string | null
+  origem:            string
+}
+
+// Fila do que a automação recebeu mas não conseguiu casar (revisão manual).
+export interface EntregaNaoCasada {
+  id:            string
+  recebido_em:   string
+  estagio:       'pedido' | 'nf' | 'entregue' | 'falha'
+  motivo:        string
+  whatsapp:      string | null
+  nome:          string | null
+  endereco:      string | null
+  cep:           string | null
+  pedido_loja:   string | null
+  pedido_fiscal: string | null
+  nfe_numero:    string | null
+  payload:       unknown
+  resolvido:     boolean
+  entrega_id:    string | null
+  resolvido_em:  string | null
 }
 
 export interface PainelEntrega extends Entrega {

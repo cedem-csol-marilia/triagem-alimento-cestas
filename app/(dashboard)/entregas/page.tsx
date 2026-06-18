@@ -229,6 +229,7 @@ export default function EntregasPage() {
                   <th>Contato</th>
                   <th>Logística</th>
                   <th>Pedido à empresa</th>
+                  <th>Nº pedido</th>
                   <th>Status entrega</th>
                   <th>Data entrega</th>
                   <th>Obs.</th>
@@ -269,6 +270,16 @@ export default function EntregasPage() {
                       <span style={{ marginLeft: 6, fontSize: '0.78rem', color: 'var(--terra-500)' }}>
                         {e.pedido_confirmado ? 'Confirmado' : 'Pendente'}
                       </span>
+                    </td>
+                    <td>
+                      <input type="text" className="form-input" placeholder="nº pedido"
+                        defaultValue={e.pedido_loja ?? ''}
+                        title="Número do pedido da loja. Preencha à mão o que ficou atrasado; a automação preenche o resto."
+                        onBlur={ev => {
+                          const v = ev.target.value.trim()
+                          if (v !== (e.pedido_loja ?? '')) atualizarEntrega(e.id, { pedido_loja: v || null })
+                        }}
+                        style={{ fontSize: '0.78rem', padding: '0.3rem 0.6rem', marginBottom: 0, width: 90 }} />
                     </td>
                     <td>
                       <select className="form-input" value={e.status}

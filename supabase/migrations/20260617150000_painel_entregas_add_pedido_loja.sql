@@ -1,7 +1,10 @@
--- Snapshot de painel_entregas (entregas com dados da família).
--- LEFT JOIN em ciclos para incluir entregas avulsas (ciclo_id null) e
--- expõe `tipo` ('ciclo' | 'avulsa') + campos da automação (pedido_loja, nfe).
--- Canônico: migrations/20260617150000_painel_entregas_add_pedido_loja.sql
+-- ============================================================
+-- MIGRATION: expor pedido_loja / nfe_numero / nfe_emitida_em na view painel_entregas
+--
+-- Objetivo: a tela de Entregas (lê de painel_entregas) precisa enxergar o
+-- número do pedido pra mostrar/editar a coluna "Nº pedido". Colunas novas
+-- entram no FIM da view (requisito do CREATE OR REPLACE VIEW).
+-- ============================================================
 
 CREATE OR REPLACE VIEW public.painel_entregas AS
 SELECT e.id,
@@ -25,9 +28,9 @@ SELECT e.id,
     c.data_fim AS ciclo_fim,
     c.status AS ciclo_status,
     e.tipo,
-    e.pedido_loja,
-    e.nfe_numero,
-    e.nfe_emitida_em
+    e.pedido_loja,     -- <<< novo: nº do pedido da loja
+    e.nfe_numero,      -- <<< novo: nº da NF
+    e.nfe_emitida_em   -- <<< novo: data de emissão da NF
    FROM entregas e
      LEFT JOIN ciclos c ON c.id = e.ciclo_id
      JOIN familias f ON f.id = e.familia_id

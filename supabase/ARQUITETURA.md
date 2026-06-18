@@ -53,7 +53,8 @@ escreve nela. Nenhuma função de duplicata deve gravar ali.
 - **`familias`** — cadastros consolidados. É o registro "oficial" de cada família.
 - **`duplicatas_detectadas`** — pares de cadastros existentes suspeitos de serem a mesma casa.
 - **`ciclos`** — ciclos de entrega por família.
-- **`entregas`** — entregas individuais dentro de um ciclo.
+- **`entregas`** — entregas individuais dentro de um ciclo. Inclui os campos da automação (`pedido_loja`, `pedido_fiscal`, `pedido_mae`, `nfe_numero`, `nfe_serie`, `nfe_emitida_em`, `whatsapp_pedido`, `motivo_falha`, `origem`).
+- **`entregas_nao_casadas`** — fila do que a automação (Make) recebeu mas não conseguiu casar (família não encontrada, whatsapp ausente, etc.). Revisão manual.
 - **`config_pesos_priorizacao`** — pesos dos critérios de score (renda, nº crianças, monoparental, PCD, etc.).
 - **`sobrenomes_comuns`** — apoio à dedup (sobrenome comum vale menos no match).
 - **`triagem_log`** — histórico de decisões de triagem.
@@ -74,9 +75,35 @@ escreve nela. Nenhuma função de duplicata deve gravar ali.
 | `calcular_similaridade_familias` | dá nota de similaridade entre 2 famílias | ❌ falta colar |
 | `buscar_candidatas_dedup` | acha cadastro parecido com uma resposta | ❌ falta colar |
 | `normalizar_telefone` / `normalizar_endereco` / `normalizar_cep` | limpam os campos para o match | ❌ falta colar |
+| `casar_familia_por_whatsapp` | acha a família pelo whatsapp normalizado (helper da automação) | ✅ migrations |
+| `registrar_pedido_loja` | automação: marca pedido confirmado + grava nº da loja | ✅ migrations |
+| `registrar_nf` | automação: grava dados da NF (best-effort) | ✅ migrations |
+| `registrar_entrega_concluida` | automação: marca status=entregue + data | ✅ migrations |
+| `registrar_falha_entrega` | automação: marca status=nao_entregue + motivo (gancho) | ✅ migrations |
 
 > Para versionar as que faltam, rode no SQL Editor
 > `select pg_get_functiondef('<nome>'::regproc);` e salve em `schema/functions/`.
+
+## Automação de entregas (Make → Supabase)
+
+Lê os e-mails da Calvo e atualiza `entregas` em 3 estágios (+ gancho de falha),
+chamando as RPCs acima via HTTP. Detalhes de montagem em
+`docs/AUTOMACAO-ENTREGAS.md`.
+
+Regras de ouro:
+- A automação **só escreve via RPC** (nunca UPDATE cru). As RPCs são
+  **idempotentes** e, quando não casam, gravam em `entregas_nao_casadas`.
+- **Chave de match: whatsapp normalizado.** Os números (loja, fiscal, mãe, NFe)
+  são auditoria — exceto que a **entrega casa primeiro pelo `pedido_loja`**
+  (determinístico, independe do mês: pedido pode ser de maio e entrega de junho).
+- Migrations: `20260617120000` (colunas + fila), `20260617121000` (RPCs),
+  `20260617130000` (data tolerante a vazio/inválido), `20260617150000`
+  (expõe `pedido_loja`/`nfe_*` na view `painel_entregas`).
+  A `20260617140000` (distribui 1:1 no mesmo mês) é **opcional** — só serve se
+  uma família tiver várias entregas no mesmo mês.
+- Backlog: dá pra preencher o `pedido_loja` **na mão** na tela de Entregas
+  (coluna "Nº pedido"); quando o e-mail de "entregue" chegar, a automação
+  casa pelo número e completa.
 
 ## Histórico de correções (migrations)
 
