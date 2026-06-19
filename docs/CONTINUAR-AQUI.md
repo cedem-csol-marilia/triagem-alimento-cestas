@@ -8,6 +8,28 @@
 docs/ROADMAP.md e supabase/ARQUITETURA.md para pegar o contexto, e vamos
 seguir a partir das pendências."
 
+## Sessão 19/jun — dashboard, ciclo e fila de não-casadas
+Mudanças de interface + 1 migration. **Build (tsc --noEmit) passou limpo.**
+- **Dashboard** (`app/(dashboard)/dashboard/page.tsx`) reescrito:
+  - Banner único de **Pendências** (triagem + cadastro incompleto + não-casadas).
+  - Cards de cestas do mês: **Programadas** (todas), **Solicitadas**
+    (pedido_confirmado OU pedido_loja), **Entregues** (status='entregue').
+  - Card **Não casadas** (conta `entregas_nao_casadas` abertas) → leva a `/nao-casadas`.
+  - **Ciclo lido do banco**: `lib/ciclo.ts` calcula a janela de 3 meses ancorada
+    no MENOR `data_inicio` dos ciclos. Mostra "mês N de 3" + janela real. Para
+    travar um mês fixo, setar `CICLO_ANCORA` em `lib/ciclo.ts` (1 linha).
+- **Página `/nao-casadas`** (de-para): liga cada linha a uma família + entrega
+  e grava via RPC. Sugere família por whatsapp. Sidebar/layout com badge.
+- **Migration `20260619120000_resolver_nao_casada.sql`** (RPC idempotente,
+  SECURITY DEFINER, grant authenticated). Snapshot em `schema/functions/`.
+
+PENDENTE AO RETOMAR:
+1. **Aplicar a migration `20260619120000` no Supabase vivo** (a página /nao-casadas
+   depende da RPC `resolver_nao_casada`). Rodar e conferir `notify pgrst, 'reload schema'`.
+2. Conferir a contagem "Programadas = 9" bate com `painel_entregas` do mês.
+3. NF: decisão da Marília — **não** construir o fluxo de NF no Make por ora
+   (consumo de créditos); o estágio 'nf' da RPC fica pronto mas inativo.
+
 ## O que já está pronto (jun/2026)
 - Build + deploy (Vercel) OK; auth com login, reset e convite por e-mail (SMTP Gmail).
 - Triagem de duplicatas: score configurável (Config → Regra de duplicatas), corte 30,

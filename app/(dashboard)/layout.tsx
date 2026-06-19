@@ -14,6 +14,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [triagemCount,    setTriagemCount]    = useState(0)
   const [filaCount,       setFilaCount]       = useState(0)
   const [incompletoCount, setIncompletoCount] = useState(0)
+  const [naoCasadasCount, setNaoCasadasCount] = useState(0)
 
   useEffect(() => {
     async function verificar() {
@@ -24,15 +25,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return
       }
 
-      const [{ count: t }, { count: f }, { count: i }] = await Promise.all([
+      const [{ count: t }, { count: f }, { count: i }, { count: nc }] = await Promise.all([
         supabase.from('respostas_forms').select('*', { count: 'exact', head: true }).eq('dedup_status', 'novo'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
         supabase.from('cadastro_incompleto').select('*', { count: 'exact', head: true }),
+        supabase.from('entregas_nao_casadas').select('*', { count: 'exact', head: true }).eq('resolvido', false),
       ])
 
       setTriagemCount(t ?? 0)
       setFilaCount(f ?? 0)
       setIncompletoCount(i ?? 0)
+      setNaoCasadasCount(nc ?? 0)
       setLoading(false)
     }
     verificar()
@@ -56,6 +59,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         triagemCount={triagemCount}
         filaCount={filaCount}
         incompletoCount={incompletoCount}
+        naoCasadasCount={naoCasadasCount}
       />
       <main className="app-main">
         {children}

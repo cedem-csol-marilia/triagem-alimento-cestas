@@ -11,6 +11,7 @@ const NAV = [
   { href: '/incompletos', icon: '📋', label: 'Cadastro incompleto', badge: 'incompleto' },
   { href: '/fila',        icon: '🏆', label: 'Fila',                badge: 'fila' },
   { href: '/entregas',    icon: '🚚', label: 'Entregas' },
+  { href: '/nao-casadas', icon: '🔗', label: 'Não casadas',          badge: 'naoCasadas' },
   { href: '/familias',    icon: '👩‍👧', label: 'Famílias' },
   { href: '/configuracoes',  icon: '⚙️', label: 'Configurações' },
   { href: '/como-funciona',  icon: '📖', label: 'Como funciona' },
@@ -20,12 +21,14 @@ interface SidebarProps {
   triagemCount?:    number
   filaCount?:       number
   incompletoCount?: number
+  naoCasadasCount?: number
 }
 
 export default function Sidebar({
   triagemCount    = 0,
   filaCount       = 0,
   incompletoCount = 0,
+  naoCasadasCount = 0,
 }: SidebarProps) {
   const pathname = usePathname()
   const router   = useRouter()
@@ -40,6 +43,7 @@ export default function Sidebar({
     triagem:     triagemCount,
     fila:        filaCount,
     incompleto:  incompletoCount,
+    naoCasadas:  naoCasadasCount,
   }
 
   return (
