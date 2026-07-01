@@ -70,6 +70,42 @@ export function janelaCicloAtual(ancoraBanco: string | null, hoje: Date = new Da
   return { inicio, fim, mesAtual, bloco, rotulo: rotular(inicio, fim) }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Janela do CICLO REAL (a partir das linhas de `ciclos` no banco).
+//
+// Por que existe: janelaCicloAtual() usa uma GRADE fixa de 3 meses ancorada no
+// ciclo mais antigo do banco. Quando os ciclos começam em meses arbitrários e
+// se sobrepõem, essa grade descasa do ciclo de verdade (ex.: ciclo real
+// mai–jul aparecendo como jun–ago). Aqui a janela vem do próprio ciclo:
+// data_inicio → data_fim reais, com o total de meses que ele de fato cobre.
+// ─────────────────────────────────────────────────────────────────────────
+export interface JanelaCicloReal {
+  inicio: Date // 1º dia do mês de data_inicio
+  fim: Date // data_fim do ciclo
+  mesAtual: number // 1..totalMeses — em que mês do ciclo estamos hoje
+  totalMeses: number // quantos meses o ciclo cobre (não é fixo em 3)
+  rotulo: string // ex.: "mai – jul 2026"
+}
+
+/**
+ * Calcula a janela a partir do ciclo real (data_inicio/data_fim do banco).
+ * @param dataInicio 'AAAA-MM-DD' — data_inicio do lote de ciclo ativo.
+ * @param dataFim    'AAAA-MM-DD' — data_fim do mesmo lote.
+ * @param hoje       data de referência (default: agora).
+ */
+export function janelaCicloReal(
+  dataInicio: string,
+  dataFim: string,
+  hoje: Date = new Date(),
+): JanelaCicloReal {
+  const inicio = primeiroDiaMes(parseLocal(dataInicio))
+  const fim = parseLocal(dataFim)
+  const totalMeses = diffMeses(inicio, primeiroDiaMes(fim)) + 1
+  const mesBruto = diffMeses(inicio, primeiroDiaMes(hoje)) + 1
+  const mesAtual = Math.min(totalMeses, Math.max(1, mesBruto))
+  return { inicio, fim, mesAtual, totalMeses, rotulo: rotular(inicio, fim) }
+}
+
 // Os 3 primeiros-dias-de-mês ('AAAA-MM-01') que compõem a janela — úteis para
 // contar entregas dentro do ciclo no banco.
 export function mesesDaJanela(janela: JanelaCiclo): string[] {

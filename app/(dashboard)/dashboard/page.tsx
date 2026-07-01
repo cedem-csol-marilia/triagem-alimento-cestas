@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
-import { janelaCicloAtual, mesesDaJanela, formatarDataBR, type JanelaCiclo } from '@/lib/ciclo'
+import { janelaCicloReal, formatarDataBR, type JanelaCicloReal } from '@/lib/ciclo'
 
 interface Stats {
   naFila: number
@@ -49,7 +49,7 @@ export default function DashboardPage() {
   const [stats,        setStats]        = useState<Stats | null>(null)
   const [ciclosAtivos, setCiclosAtivos] = useState<CicloAtivo[]>([])
   const [entregas,     setEntregas]     = useState<EntregaResumo[]>([])
-  const [janela,       setJanela]       = useState<JanelaCiclo | null>(null)
+  const [janela,       setJanela]       = useState<JanelaCicloReal | null>(null)
   const [resumoCiclo,  setResumoCiclo]  = useState<ResumoCiclo>({ programadas: 0, entregues: 0 })
   const [loading,      setLoading]      = useState(true)
 
@@ -72,7 +72,6 @@ export default function DashboardPage() {
         { count: naoCasadas },
         { data: ciclos },
         { data: proximasEntregas },
-        { data: ancoraRow },
       ] = await Promise.all([
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'confirmada'),
@@ -89,10 +88,8 @@ export default function DashboardPage() {
         supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).eq('mes_referencia', mesAtual).eq('status', 'entregue'),
         // Exceções da automação ainda abertas
         supabase.from('entregas_nao_casadas').select('*', { count: 'exact', head: true }).eq('resolvido', false),
-        supabase.from('ciclos').select('familia_id, status, familias(nome_responsavel)').in('status', ['confirmado', 'em_curso']).order('data_inicio', { ascending: false }),
+        supabase.from('ciclos').select('id, familia_id, data_inicio, data_fim, status, familias(nome_responsavel)').in('status', ['confirmado', 'em_curso']).order('data_inicio', { ascending: false }),
         supabase.from('painel_entregas').select('id, nome_responsavel, whatsapp, endereco, bairro, ponto_referencia, pode_buscar_cedem, status').eq('mes_referencia', mesAtual).eq('status', 'pendente').limit(5),
-        // Âncora do ciclo: menor data_inicio existente no banco
-        supabase.from('ciclos').select('data_inicio').order('data_inicio', { ascending: true }).limit(1),
       ])
 
       setStats({
@@ -109,24 +106,34 @@ export default function DashboardPage() {
         naoCasadas:          naoCasadas          ?? 0,
       })
 
-      setCiclosAtivos((ciclos ?? []).map((c: any) => ({
+      // Lote de ciclo ATIVO = linhas de `ciclos` com a data_inicio mais recente
+      // (a query vem ordenada por data_inicio desc). Cada família é uma linha;
+      // o ciclo é o conjunto que compartilha a mesma data_inicio.
+      const ciclosData = (ciclos ?? []) as any[]
+      const dataInicioAtual = ciclosData[0]?.data_inicio ?? null
+      const loteAtual       = ciclosData.filter(c => c.data_inicio === dataInicioAtual)
+      const dataFimAtual    = loteAtual[0]?.data_fim ?? null
+      const cicloIdsAtuais  = loteAtual.map(c => c.id as string)
+
+      setCiclosAtivos(loteAtual.map((c: any) => ({
         familia_id:       c.familia_id,
         nome_responsavel: c.familias?.nome_responsavel ?? '—',
         status:           c.status,
       })))
       setEntregas((proximasEntregas as EntregaResumo[]) ?? [])
 
-      // Janela do ciclo vinda do banco (âncora = menor data_inicio)
-      const ancora = (ancoraRow as { data_inicio: string }[] | null)?.[0]?.data_inicio ?? null
-      const j = janelaCicloAtual(ancora, hoje)
+      // Janela vinda do CICLO REAL (data_inicio → data_fim), não de uma grade fixa.
+      const j = dataInicioAtual && dataFimAtual
+        ? janelaCicloReal(dataInicioAtual, dataFimAtual, hoje)
+        : null
       setJanela(j)
 
-      // Resumo de cestas DENTRO da janela do ciclo (3 meses)
-      if (j) {
-        const meses = mesesDaJanela(j)
+      // Resumo de cestas do ciclo: conta as entregas DESSE lote (por ciclo_id),
+      // sem misturar com ciclos vizinhos que caiam nos mesmos meses.
+      if (cicloIdsAtuais.length > 0) {
         const [{ count: prog }, { count: entr }] = await Promise.all([
-          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('mes_referencia', meses),
-          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('mes_referencia', meses).eq('status', 'entregue'),
+          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('ciclo_id', cicloIdsAtuais),
+          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('ciclo_id', cicloIdsAtuais).eq('status', 'entregue'),
         ])
         setResumoCiclo({ programadas: prog ?? 0, entregues: entr ?? 0 })
       }
@@ -244,7 +251,7 @@ export default function DashboardPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
                 <div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)', marginBottom: 4 }}>
-                    Ciclo atual · mês {janela.mesAtual} de 3
+                    Ciclo atual · mês {janela.mesAtual} de {janela.totalMeses}
                   </div>
                   <div style={{ fontSize: '0.82rem', color: 'var(--terra-500)' }}>
                     {formatarDataBR(janela.inicio)} → {formatarDataBR(janela.fim)} · <span style={{ textTransform: 'capitalize' }}>{janela.rotulo}</span>
@@ -272,9 +279,9 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* progresso do ciclo (mês 1→3) */}
+              {/* progresso do ciclo (mês 1→N, conforme o ciclo real) */}
               <div style={{ display: 'flex', gap: 6, marginTop: 'var(--space-4)' }}>
-                {[1, 2, 3].map(m => (
+                {Array.from({ length: janela.totalMeses }, (_, i) => i + 1).map(m => (
                   <div key={m} style={{
                     flex: 1, height: 6, borderRadius: 'var(--radius-pill)',
                     background: m <= janela.mesAtual ? 'var(--musgo-500)' : 'var(--terra-200)',
