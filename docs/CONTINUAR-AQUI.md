@@ -8,6 +8,24 @@
 docs/ROADMAP.md e supabase/ARQUITETURA.md para pegar o contexto, e vamos
 seguir a partir das pendências."
 
+## Sessão 23/jun — apresentação/doc-arquivo do projeto
+Sem mudança de código ou banco. Gerado um documento de apresentação do projeto
+para uso como portfólio e explicação a terceiros.
+- **`docs/APRESENTACAO-PROJETO.html`** (autocontido, abre no navegador): conta a
+  jornada do projeto (problema → solução → fases → saga das duplicatas → como
+  refazer → roteiro pra explicar → números). Público misto (acessível + técnico).
+  Serve como o "doc-arquivo do que foi feito". Fonte: este arquivo + ROADMAP +
+  FLUXO-E-BANCO + ARQUITETURA + git log.
+- Premissas do projeto consolidadas no HTML (seção 03): humano no comando;
+  ninguém escreve no escuro; idempotência na raiz do banco; regras configuráveis;
+  qualidade na origem; tudo versionado e retomável.
+- Snapshot factual usado: 34 migrations, 9 telas, janela 09–19/jun, fila de
+  duplicatas calibrada 11→7.
+
+PENDENTE AO RETOMAR: nada novo desta sessão. As pendências reais seguem sendo as
+das sessões 19/jun e 12/jun abaixo (aplicar migration `20260619120000`, conferir
+contagens, commitar, rotacionar service_role).
+
 ## Sessão 19/jun — dashboard, ciclo e fila de não-casadas
 Mudanças de interface + 1 migration. **Build (tsc --noEmit) passou limpo.**
 - **Dashboard** (`app/(dashboard)/dashboard/page.tsx`) reescrito:

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutorial — Como montei o Sistema de Triagem de Cestas (CEDEM)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700&family=Space+Grotesk:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --terra-900:#2C1A0E; --terra-800:#4A2E1A; --terra-700:#6B4226; --terra-600:#8C5A34;
+    --terra-500:#A97040; --terra-400:#C4884A; --terra-300:#D4A872; --terra-200:#E8CBA0;
+    --terra-100:#F2E2C8; --terra-50:#FAF3E8;
+    --ocre-600:#B8860B; --ocre-400:#D4A017; --ocre-200:#EDD890;
+    --musgo-700:#2D4A2D; --musgo-500:#4A7C59; --musgo-300:#7FAF8C; --musgo-100:#C8E0CB;
+    --mogno-500:#7C3D3D;
+    --areia:#F5ECD7; --palha:#EDE0C4;
+    --display:'Fraunces',Georgia,serif; --body:'Space Grotesk',system-ui,sans-serif;
+    --maxw:880px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--body); font-size:16.5px; line-height:1.7; background:var(--areia); color:var(--terra-800); -webkit-font-smoothing:antialiased}
+  h1,h2,h3,h4{font-family:var(--display); color:var(--terra-900); line-height:1.15; font-weight:600}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  a{color:var(--musgo-500)} a:hover{color:var(--musgo-700)}
+
+  header.top{padding:66px 0 40px; background:radial-gradient(800px 320px at 80% -30%, rgba(74,124,89,.16), transparent 60%), linear-gradient(180deg,var(--terra-50),var(--areia)); border-bottom:1.5px solid var(--terra-200)}
+  .brand{display:flex; align-items:center; gap:12px; margin-bottom:26px}
+  .brand .leaf{width:38px; height:38px}
+  .brand .name{font-family:var(--display); font-weight:600; color:var(--musgo-700); font-size:16px}
+  .brand .name small{display:block; font-family:var(--body); font-weight:400; color:var(--terra-500); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase}
+  .eyebrow{color:var(--ocre-600); font-weight:500; letter-spacing:.16em; text-transform:uppercase; font-size:12px; margin-bottom:14px}
+  header.top h1{font-size:clamp(32px,5vw,48px); letter-spacing:-.015em; margin-bottom:14px; max-width:16ch}
+  header.top p.lede{font-size:19px; color:var(--terra-700); max-width:60ch}
+  .badges{display:flex; flex-wrap:wrap; gap:8px; margin-top:24px}
+  .badge{background:#fff; border:1.5px solid var(--terra-200); border-radius:999px; padding:5px 13px; font-size:13px; color:var(--terra-600)}
+
+  /* layout with sticky TOC */
+  .body-grid{display:grid; grid-template-columns:220px 1fr; gap:40px; padding:44px 0 90px}
+  @media(max-width:880px){.body-grid{grid-template-columns:1fr; gap:0}}
+  nav.toc{position:sticky; top:24px; align-self:start; font-size:13.5px}
+  @media(max-width:880px){nav.toc{display:none}}
+  nav.toc .lab{font-size:11px; text-transform:uppercase; letter-spacing:.1em; color:var(--terra-500); margin-bottom:12px; font-weight:500}
+  nav.toc a{display:block; color:var(--terra-600); padding:6px 0; border-left:2px solid transparent; padding-left:12px; text-decoration:none}
+  nav.toc a:hover{color:var(--terra-900); border-color:var(--musgo-300)}
+
+  article h2{font-size:27px; margin:46px 0 6px; scroll-margin-top:24px}
+  article h2:first-child{margin-top:0}
+  article h2 .n{font-family:var(--body); color:var(--terra-300); font-weight:700; font-size:16px; margin-right:10px; font-variant-numeric:tabular-nums}
+  article h3{font-size:19px; margin:28px 0 8px}
+  article p{margin-bottom:14px}
+  article ul,article ol{margin:6px 0 16px; padding-left:24px}
+  article li{margin:6px 0}
+  .step-sub{color:var(--terra-500); font-size:14px; margin:-2px 0 18px}
+
+  code{background:#fff; border:1px solid var(--terra-200); border-radius:5px; padding:1px 6px; font-size:14px; font-family:"SF Mono",Menlo,Consolas,monospace; color:var(--mogno-500)}
+  pre{background:var(--terra-900); color:var(--terra-100); border-radius:14px; padding:18px 20px; overflow-x:auto; font-size:13.5px; line-height:1.6; font-family:"SF Mono",Menlo,Consolas,monospace; margin:14px 0; box-shadow:0 6px 18px rgba(44,26,14,.12)}
+  pre .c{color:var(--terra-400)} pre .k{color:var(--musgo-300)}
+  pre code{background:none; border:none; padding:0; color:inherit; font-size:inherit}
+
+  .note,.warn,.tip{border-radius:0 12px 12px 0; padding:14px 18px; margin:18px 0; font-size:15px}
+  .note{border-left:4px solid var(--musgo-500); background:var(--musgo-100); color:var(--musgo-700)}
+  .tip{border-left:4px solid var(--ocre-400); background:#FDF6D3; color:var(--terra-700)}
+  .warn{border-left:4px solid var(--mogno-500); background:#F6E5DF; color:var(--mogno-500)}
+  .note b,.tip b,.warn b{color:var(--terra-900)}
+
+  table{width:100%; border-collapse:collapse; font-size:14.5px; background:#fff; border:1px solid var(--terra-200); border-radius:12px; overflow:hidden; margin:14px 0}
+  th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--terra-100); vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th{background:var(--terra-50); color:var(--terra-600); font-size:12px; text-transform:uppercase; letter-spacing:.05em; font-weight:500}
+  td b{color:var(--terra-900); font-weight:500}
+
+  .pillrow{display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 4px}
+  .num-badge{display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:9px; background:var(--musgo-100); color:var(--musgo-700); font-family:var(--display); font-weight:600; font-size:15px; margin-right:10px; vertical-align:middle}
+
+  footer{border-top:1.5px solid var(--terra-200); padding:30px 0 80px; color:var(--terra-500); font-size:13.5px}
+  @media print{nav.toc{display:none} .body-grid{grid-template-columns:1fr} body{background:#fff}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <svg class="leaf" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-label="CEDEM">
+        <rect width="32" height="32" rx="8" fill="#2D4A2D"/>
+        <g transform="rotate(12 16 16)">
+          <path d="M16 5 C 23 9, 23 21, 16 27 C 9 21, 9 9, 16 5 Z" fill="#C8E0CB"/>
+          <path d="M16 7 L16 26" stroke="#2D4A2D" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M16 12 L11.5 10.5 M16 12 L20.5 10.5 M16 17.5 L11 16.5 M16 17.5 L21 16.5 M16 22.5 L12 22 M16 22.5 L20 22" stroke="#4A7C59" stroke-width="1.1" stroke-linecap="round"/>
+        </g>
+      </svg>
+      <span class="name">CEDEM<small>Triagem de Cestas</small></span>
+    </div>
+    <p class="eyebrow">Tutorial · passo a passo</p>
+    <h1>Como montei o sistema, do zero ao ar</h1>
+    <p class="lede">Um guia corrido para reproduzir o projeto: o que instalar, o que rodar no terminal, como montar o banco no Supabase e como ligar a ingestão do formulário e a automação das entregas.</p>
+    <div class="badges">
+      <span class="badge">Next.js 14 · TypeScript</span>
+      <span class="badge">Supabase (Postgres)</span>
+      <span class="badge">Vercel</span>
+      <span class="badge">Google Apps Script</span>
+      <span class="badge">Make</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="body-grid">
+
+  <nav class="toc">
+    <div class="lab">Conteúdo</div>
+    <a href="#visao">Visão geral</a>
+    <a href="#prereq">1 · Pré-requisitos</a>
+    <a href="#criar">2 · Criar o app</a>
+    <a href="#deps">3 · Dependências</a>
+    <a href="#env">4 · Variáveis de ambiente</a>
+    <a href="#local">5 · Rodar local</a>
+    <a href="#supabase">6 · Montar o Supabase</a>
+    <a href="#forms">7 · Ingestão do Form</a>
+    <a href="#make">8 · Automação (Make)</a>
+    <a href="#deploy">9 · Git + Vercel</a>
+    <a href="#licoes">10 · Lições</a>
+    <a href="#resumo">Resumo dos comandos</a>
+  </nav>
+
+  <article>
+
+    <h2 id="visao"><span class="n">00</span>Visão geral</h2>
+    <p>O sistema nasceu de uma necessidade simples: o CEDEM recebia pedidos de cesta básica por um Google Form e controlava tudo na mão. O objetivo foi transformar isso numa operação que importa os cadastros sozinha, identifica famílias repetidas, prioriza quem mais precisa e acompanha cada entrega.</p>
+    <p>A arquitetura tem duas pontas que terminam no mesmo banco:</p>
+    <ul>
+      <li><b>Cadastro e triagem:</b> Google Form → Planilha → Apps Script → banco (normaliza e deduplica) → fila priorizada.</li>
+      <li><b>Automação de entregas:</b> e-mails da loja → dois fluxos no Make → funções do banco (RPCs) → baixa automática.</li>
+    </ul>
+    <p>O front é Next.js na Vercel; o banco e a autenticação são do Supabase. Tudo abaixo é a ordem real em que foi montado.</p>
+
+    <h2 id="prereq"><span class="n">01</span>Pré-requisitos</h2>
+    <p class="step-sub">Instalar uma vez por máquina.</p>
+    <p>Você vai precisar de <b>Node.js</b> (que traz o <code>npm</code> e o <code>npx</code>), <b>Git</b> e um editor como o VS Code. Além disso, contas em <b>Supabase</b>, <b>Vercel</b>, <b>Google</b> (Form/Planilha/Apps Script) e <b>Make</b>.</p>
+    <p>Confira se Node e Git já estão instalados:</p>
+    <pre><code>node -v      <span class="c"># precisa ser v18+ ou v20+</span>
+npm -v
+git --version</code></pre>
+    <div class="tip"><b>Se o Node não aparecer:</b> baixe a versão <b>LTS</b> em nodejs.org — o instalador já inclui <code>npm</code> e <code>npx</code>. No Windows, instale também o Git for Windows (git-scm.com).</div>
+
+    <h2 id="criar"><span class="n">02</span>Criar o projeto Next.js</h2>
+    <p>Um comando cria o esqueleto inteiro do app com TypeScript e App Router:</p>
+    <pre><code>npx create-next-app@latest triagem-alimento-cestas</code></pre>
+    <p>Respostas usadas no assistente:</p>
+    <table>
+      <tr><th>Pergunta</th><th>Resposta</th></tr>
+      <tr><td>TypeScript?</td><td><b>Yes</b></td></tr>
+      <tr><td>ESLint?</td><td><b>Yes</b></td></tr>
+      <tr><td>Tailwind CSS?</td><td><b>No</b> (o projeto usa CSS próprio — o Axé Design System)</td></tr>
+      <tr><td>src/ directory?</td><td><b>No</b></td></tr>
+      <tr><td>App Router?</td><td><b>Yes</b></td></tr>
+      <tr><td>import alias (@/*)?</td><td><b>Yes</b></td></tr>
+    </table>
+    <p>Depois, entre na pasta criada:</p>
+    <pre><code>cd triagem-alimento-cestas</code></pre>
+
+    <h2 id="deps"><span class="n">03</span>Instalar as dependências do Supabase</h2>
+    <p>O <code>create-next-app</code> já instalou o Next, o React, o TypeScript e o ESLint. A única instalação manual foi o Supabase:</p>
+    <pre><code>npm install @supabase/supabase-js @supabase/ssr</code></pre>
+    <ul>
+      <li><code>@supabase/supabase-js</code> — o cliente que conversa com o banco e a auth.</li>
+      <li><code>@supabase/ssr</code> — helper para usar o Supabase em Server Components do Next (sessão no servidor).</li>
+    </ul>
+    <p>Na prática, você cria dois clientes: um para o navegador (<code>lib/supabase/client.ts</code>) e um para o servidor (<code>lib/supabase/server.ts</code>).</p>
+
+    <h2 id="env"><span class="n">04</span>Variáveis de ambiente</h2>
+    <p>Crie um arquivo <code>.env.local</code> na raiz do projeto com as chaves do seu projeto Supabase:</p>
+    <pre><code>NEXT_PUBLIC_SUPABASE_URL=https://SEU_PROJETO.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_anon_key_aqui</code></pre>
+    <p>Essas duas chaves ficam em <b>Supabase → Settings → API</b>.</p>
+    <div class="warn"><b>Segurança:</b> nunca commite o <code>.env.local</code> (ele já entra no <code>.gitignore</code>). E <b>nunca</b> use a chave <code>service_role</code> no app ou na automação — ela é de admin. No front, só a <code>anon key</code>.</div>
+
+    <h2 id="local"><span class="n">05</span>Rodar localmente</h2>
+    <p>Com tudo no lugar, suba o servidor de desenvolvimento:</p>
+    <pre><code>npm run dev      <span class="c"># abre em http://localhost:3000</span></code></pre>
+    <p>Outros comandos úteis no dia a dia:</p>
+    <pre><code>npm run build    <span class="c"># build de produção — também acusa erros de TypeScript</span>
+npm run start    <span class="c"># roda o build localmente</span>
+npm run lint     <span class="c"># checagem do ESLint</span></code></pre>
+    <div class="tip"><b>Dica:</b> rodar <code>npm run build</code> antes de cada push pega erros de tipo que o <code>dev</code> às vezes deixa passar.</div>
+
+    <h2 id="supabase"><span class="n">06</span>Montar o banco no Supabase</h2>
+    <p class="step-sub">Aqui está o coração do projeto.</p>
+    <p>O Supabase foi montado pelo <b>painel web</b> — não por uma CLI local. Cada mudança no banco foi escrita em SQL e aplicada no <b>SQL Editor</b>. A pasta <code>supabase/</code> do repositório guarda a versão de tudo: cada alteração virou um arquivo SQL numerado.</p>
+
+    <h3><span class="num-badge">1</span>Criar o projeto</h3>
+    <p>Em supabase.com → <b>New Project</b>, escolha a região e defina a senha do Postgres. Depois, em <b>Settings → API</b>, copie a <code>URL</code> e a <code>anon key</code> para o <code>.env.local</code> e para a Vercel.</p>
+
+    <h3><span class="num-badge">2</span>Ligar a autenticação por e-mail</h3>
+    <p>Em <b>Authentication → Providers</b>, deixe o e-mail ligado. Para os e-mails de convite e de redefinição de senha, configure o SMTP (no projeto usei o do Gmail).</p>
+
+    <h3><span class="num-badge">3</span>Aplicar as migrations no SQL Editor</h3>
+    <p>Cada mudança no banco é um arquivo com nome no padrão de data/hora, aplicado em ordem:</p>
+    <pre><code><span class="c"># formato do nome do arquivo</span>
+AAAAMMDDHHMMSS_descricao_curta.sql
+<span class="c"># ex.: 20260617121000_rpcs_automacao_entregas.sql</span></code></pre>
+    <p>Cole o conteúdo no SQL Editor e rode, do mais antigo para o mais novo. Sempre que criar ou alterar uma função (RPC), rode também:</p>
+    <pre><code>notify pgrst, <span class="k">'reload schema'</span>;  <span class="c"># o PostgREST recarrega a API</span></code></pre>
+
+    <h3><span class="num-badge">4</span>A estrutura da pasta</h3>
+    <pre><code>supabase/
+├── ARQUITETURA.md          <span class="c"># mapa do fluxo de dados (ler primeiro)</span>
+├── migrations/             <span class="c"># histórico real: 1 arquivo por mudança</span>
+│   └── AAAAMMDDHHMMSS_*.sql
+└── schema/                 <span class="c"># snapshot do estado atual</span>
+    ├── tables/
+    ├── views/
+    └── functions/</code></pre>
+
+    <h3><span class="num-badge">5</span>O modelo de dados</h3>
+    <p>As tabelas principais:</p>
+    <table>
+      <tr><th>Tabela</th><th>Papel</th></tr>
+      <tr><td><b>respostas_forms</b></td><td>input cru do Google Form (só o Apps Script escreve aqui)</td></tr>
+      <tr><td><b>familias</b></td><td>cadastros consolidados — o registro "oficial" de cada família</td></tr>
+      <tr><td><b>duplicatas_detectadas</b></td><td>pares de cadastros suspeitos de serem a mesma casa</td></tr>
+      <tr><td><b>ciclos</b> / <b>entregas</b></td><td>ciclos de 3 meses e as entregas individuais (núcleo da automação)</td></tr>
+      <tr><td><b>entregas_nao_casadas</b></td><td>fila de exceções: o que a automação recebeu mas não casou</td></tr>
+      <tr><td><b>config_pesos_*</b></td><td>pesos do score e da regra de duplicata (ajustáveis sem código)</td></tr>
+    </table>
+    <p>E as funções de banco (RPCs) que fazem o trabalho pesado: <code>importar_resposta_forms</code>, <code>detectar_duplicatas</code>, <code>calcular_score</code>, <code>mesclar_familias</code>, e as da automação (<code>registrar_pedido_loja</code>, <code>registrar_entrega_concluida</code>, <code>resolver_nao_casada</code>).</p>
+    <div class="note"><b>Por que tudo passa por RPC?</b> Uma RPC é uma função guardada dentro do banco que você chama de fora como se fosse um endpoint. Em vez de mandar um <code>UPDATE</code> cru, o app e o Make chamam uma RPC que normaliza, valida, evita duplicar e — na dúvida — joga numa fila de revisão. É o que garante que <b>ninguém escreve no escuro</b>.</div>
+
+    <h2 id="forms"><span class="n">07</span>Ingestão do Google Form (Apps Script)</h2>
+    <ol>
+      <li>Vincule as respostas do Form a uma <b>Planilha</b>.</li>
+      <li>Na Planilha: <b>Extensões → Apps Script</b>.</li>
+      <li>Cole o script (em <code>docs/apps-script/ingestao-forms.gs</code>). Ele lê por <b>nome de coluna</b>, então não quebra se você reordenar o formulário.</li>
+      <li>Configure um <b>gatilho</b> (trigger) para rodar a cada nova resposta.</li>
+    </ol>
+    <p>A cada resposta, o script faz um POST na RPC <code>importar_resposta_forms</code> do Supabase (usando a <code>anon key</code>), que normaliza os dados, procura duplicata e insere na fila — ou marca para triagem, se houver suspeita.</p>
+
+    <h2 id="make"><span class="n">08</span>Automação de entregas (Make)</h2>
+    <p>São <b>dois fluxos no Make</b>, e os dois casam a família pelo <b>WhatsApp</b>:</p>
+    <ul>
+      <li><b>Fluxo do pedido:</b> lê o e-mail de pedido da loja → chama <code>registrar_pedido_loja</code>.</li>
+      <li><b>Fluxo da entrega:</b> lê o e-mail de entrega/NF → chama <code>registrar_entrega_concluida</code> / <code>registrar_nf</code>.</li>
+    </ul>
+    <p>Cada fluxo faz um POST numa RPC do Supabase (<code>/rest/v1/rpc/&lt;funcao&gt;</code>). As regras de ouro:</p>
+    <ul>
+      <li>Só escreve <b>via RPC</b> — nunca <code>UPDATE</code> direto.</li>
+      <li>As RPCs são <b>idempotentes</b>: se o Make repetir a chamada, não duplica a entrega.</li>
+      <li>O que não casa cai em <code>entregas_nao_casadas</code> e é resolvido na tela <code>/nao-casadas</code>.</li>
+    </ul>
+    <div class="warn"><b>Nunca</b> use a <code>service_role</code> no Make. Use chave restrita / RPC.</div>
+
+    <h2 id="deploy"><span class="n">09</span>Versionar e publicar (Git + Vercel)</h2>
+    <p>Primeiro, suba o código para o GitHub:</p>
+    <pre><code>git init
+git add .
+git commit -m <span class="k">"deploy inicial"</span>
+git branch -M main
+git remote add origin https://github.com/SEU_USUARIO/triagem-alimento-cestas.git
+git push -u origin main</code></pre>
+    <p>Depois, na Vercel:</p>
+    <ol>
+      <li><b>New Project</b> → importe o repositório do GitHub.</li>
+      <li>Em <b>Environment Variables</b>, adicione <code>NEXT_PUBLIC_SUPABASE_URL</code> e <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.</li>
+      <li><b>Deploy.</b> A partir daí, todo push na <code>main</code> faz redeploy automático.</li>
+    </ol>
+
+    <h2 id="licoes"><span class="n">10</span>Lições que valem o aprendizado</h2>
+    <p>Algumas decisões pouparam muita dor:</p>
+    <ul>
+      <li><b>Qualidade começa na origem.</b> Endereço como texto livre quebra qualquer deduplicação. Separar CEP, número e complemento no Form destrava o resto.</li>
+      <li><b>Simples e validado vence esperto demais.</b> A régua de "é a mesma casa?" foi calibrada à mão contra um gabarito real — uma regex "inteligente" só piorava.</li>
+      <li><b>Humano no comando.</b> O sistema sugere; a pessoa decide quem é duplicata e a prioridade. Tema sensível não pode ser 100% automático.</li>
+      <li><b>Versione tudo.</b> Cada mudança no banco é uma migration, e um arquivo "continuar aqui" recupera o contexto em qualquer retomada.</li>
+    </ul>
+
+    <h2 id="resumo">Resumo dos comandos</h2>
+    <p class="step-sub">A sequência inteira do terminal, do começo ao fim.</p>
+    <pre><code><span class="c"># 1. conferir pré-requisitos</span>
+node -v ; npm -v ; git --version
+
+<span class="c"># 2. criar o app</span>
+npx create-next-app@latest triagem-alimento-cestas
+cd triagem-alimento-cestas
+
+<span class="c"># 3. dependências do Supabase</span>
+npm install @supabase/supabase-js @supabase/ssr
+
+<span class="c"># 4. criar .env.local com URL e ANON KEY do Supabase</span>
+
+<span class="c"># 5. rodar local</span>
+npm run dev
+
+<span class="c"># 6. versionar e subir</span>
+git init
+git add .
+git commit -m <span class="k">"deploy inicial"</span>
+git branch -M main
+git remote add origin https://github.com/SEU_USUARIO/triagem-alimento-cestas.git
+git push -u origin main
+
+<span class="c"># 7. Vercel: importar repo + env vars + Deploy</span>
+<span class="c"># 8. Supabase: aplicar as migrations no SQL Editor, em ordem de timestamp</span></code></pre>
+    <div class="note">O banco não se monta com <code>npm</code>: monta-se aplicando os arquivos de <code>supabase/migrations/</code> no SQL Editor do painel, em ordem. O <code>npm</code> cuida só do app.</div>
+
+  </article>
+</div>
+</div>
+
+<footer>
+  <div class="wrap">
+    Tutorial do projeto <b>triagem-alimento-cestas</b> (CEDEM) · gerado em 23/jun/2026.<br>
+    Documentos relacionados no repositório: <code>INSTALACAO-E-SETUP.md</code>, <code>APRESENTACAO-PROJETO.html</code>, <code>FLUXO-E-BANCO.md</code>, <code>supabase/ARQUITETURA.md</code>.
+  </div>
+</footer>
+
+</body>
+</html>

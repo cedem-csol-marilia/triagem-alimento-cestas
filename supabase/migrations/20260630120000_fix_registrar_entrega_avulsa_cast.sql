@@ -1,5 +1,16 @@
--- Snapshot de registrar_entrega_avulsa (cria entrega fora de ciclo).
--- Canônico: migrations/20260615131000_registrar_entrega_avulsa.sql
+-- ============================================================
+-- FIX: registrar_entrega_avulsa — cast do status para o enum.
+--
+-- Sintoma: "column \"status\" is of type status_entrega but
+-- expression is of type text" ao registrar entrega avulsa.
+--
+-- Causa: o CASE WHEN ... THEN 'entregue' ELSE 'pendente' END
+-- resolve os dois literais como `text`. Inserir text numa coluna
+-- enum falha sem cast explícito. (Um literal solto ficaria `unknown`
+-- e seria convertido automaticamente; dentro do CASE vira `text`.)
+--
+-- Correção: ::status_entrega no resultado do CASE.
+-- ============================================================
 
 CREATE OR REPLACE FUNCTION public.registrar_entrega_avulsa(
   p_familia_id     uuid,

@@ -7,6 +7,29 @@ real, com esforço estimado.
 **Legenda** — Prioridade: P0 (faça primeiro) · P1 (em seguida) · P2 (quando der).
 Esforço: P (poucas horas) · M (1–2 dias) · G (vários dias).
 
+> Apresentação do projeto (portfólio / explicação a terceiros):
+> `docs/APRESENTACAO-PROJETO.html` — narrativa do que foi feito, premissas,
+> saga das duplicatas, anexo "como refazer" e roteiro pra explicar.
+
+---
+
+## Já concluído desde este mapeamento (jun/2026)
+
+Atualização de status — itens deste roadmap que já saíram:
+- **Ficha da Família (item 2, era P0):** ✅ drawer 360º entregue em Famílias e Fila.
+  Falta só o **breakdown do score** dentro da ficha (continua pendente).
+- **Endereço estruturado (parte do item 3):** ✅ número e complemento separados na
+  tabela e no fluxo (migrations `…615150000`/`…615151000`). Falta migrar o **Google
+  Form** em si e subir o gate de similaridade (0.7 → 0.85+).
+- **Automação de entregas:** ✅ fora do escopo original deste roadmap — Make + RPCs
+  idempotentes (pedido/NF/entrega) + fila `entregas_nao_casadas` e tela `/nao-casadas`.
+- **Dashboard de gestão e ciclo lido do banco:** ✅ entregue em 19/jun.
+
+Ainda em aberto (próximas frentes, sem mudança de prioridade): clareza da triagem
+(item 1), breakdown do score (item 2), Form estruturado + Apps Script (item 3),
+fluxo de cadastro incompleto via WhatsApp e relatórios (item 4), e a higiene
+técnica do item 5.
+
 ---
 
 ## Estado atual (baseline)
