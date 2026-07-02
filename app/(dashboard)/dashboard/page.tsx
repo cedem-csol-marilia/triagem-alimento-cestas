@@ -348,7 +348,7 @@ export default function DashboardPage() {
                       <td>{e.bairro ?? '—'}</td>
                       <td>{e.whatsapp ? <a href={`https://wa.me/55${e.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--musgo-500)', fontSize: '0.8rem' }}>{e.whatsapp}</a> : '—'}</td>
                       <td style={{ fontSize: '0.78rem' }}>{e.pode_buscar_cedem ? '✓ Busca no CEDEM' : '🚚 Precisa entrega'}</td>
-                      <td><span className={`badge badge-${e.status}`}>{e.status === 'pendente' ? 'Pendente' : e.status === 'entregue' ? 'Entregue' : 'Não entregue'}</span></td>
+                      <td><span className={`badge badge-${e.status}`}>{e.status === 'pendente' ? 'Pendente' : e.status === 'entregue' ? 'Entregue' : e.status === 'pulada' ? 'Pulada' : 'Não entregue'}</span></td>
                     </tr>
                   ))}
                 </tbody>

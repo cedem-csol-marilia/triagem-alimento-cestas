@@ -50,7 +50,10 @@ export default function EntregasPage() {
       .select('*')
       .eq('mes_referencia', mesAtual)
       .order('nome_responsavel', { ascending: true })
-    setEntregas((data as PainelEntrega[]) ?? [])
+    // A view expõe entregas.observacao como "entrega_obs"; normaliza para
+    // "observacao", que é o campo que a tabela usa ao exibir/salvar.
+    const linhas = ((data as PainelEntrega[]) ?? []).map(l => ({ ...l, observacao: l.entrega_obs }))
+    setEntregas(linhas)
     setLoading(false)
   }, [supabase, mesAtual])
 
@@ -113,6 +116,7 @@ export default function EntregasPage() {
   const totalAvulsa = entregas.filter(e => e.tipo === 'avulsa').length
   const totalEntregues = entregas.filter(e => e.status === 'entregue').length
   const totalPendentes = entregas.filter(e => e.status === 'pendente').length
+  const totalPuladas   = entregas.filter(e => e.status === 'pulada').length
 
   return (
     <>
@@ -122,7 +126,7 @@ export default function EntregasPage() {
           <p className="page-subtitle">
             {formatarMes(mesAtual)} · {total} cesta{total !== 1 ? 's' : ''}
             {' '}({totalCiclo} do ciclo · {totalAvulsa} avulsa{totalAvulsa !== 1 ? 's' : ''})
-            {' '}· {totalEntregues} entregues · {totalPendentes} pendentes
+            {' '}· {totalEntregues} entregues · {totalPendentes} pendentes{totalPuladas > 0 ? ` · ${totalPuladas} pulada${totalPuladas !== 1 ? 's' : ''}` : ''}
           </p>
         </div>
         <button className="btn btn-ocre" onClick={() => setMostrarAvulsa(v => !v)}>
@@ -288,6 +292,7 @@ export default function EntregasPage() {
                         <option value="pendente">Pendente</option>
                         <option value="entregue">Entregue</option>
                         <option value="nao_entregue">Não entregue</option>
+                        <option value="pulada">Pulada</option>
                       </select>
                     </td>
                     <td>

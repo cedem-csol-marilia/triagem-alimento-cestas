@@ -3,7 +3,7 @@
 
 export type StatusFamilia  = 'fila' | 'confirmada' | 'ativa' | 'concluida' | 'inativa'
 export type StatusCiclo    = 'confirmado' | 'em_curso' | 'encerrado'
-export type StatusEntrega  = 'pendente' | 'entregue' | 'nao_entregue'
+export type StatusEntrega  = 'pendente' | 'entregue' | 'nao_entregue' | 'pulada'
 export type TipoEntrega    = 'ciclo' | 'avulsa'
 export type DedupStatus    = 'novo' | 'mesma_casa' | 'recadastro' | 'separado' | 'ignorado'
 export type DecisaoTriagem = 'mesma_casa' | 'casas_separadas' | 'recadastro' | 'ignorar'
@@ -185,6 +185,7 @@ export interface EntregaNaoCasada {
 }
 
 export interface PainelEntrega extends Entrega {
+  entrega_obs:       string | null   // alias de entregas.observacao na view
   nome_responsavel:  string
   whatsapp:          string | null
   endereco:          string | null

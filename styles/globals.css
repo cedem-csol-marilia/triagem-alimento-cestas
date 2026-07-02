@@ -142,6 +142,7 @@ button { cursor: pointer; font-family: var(--font-body); }
 .badge-pendente  { background: #FDF6D3;           color: var(--ocre-600);  border-color: var(--ocre-200); }
 .badge-entregue  { background: var(--musgo-100);  color: var(--musgo-700); border-color: var(--musgo-300); }
 .badge-nao_entregue { background: var(--mogno-100); color: var(--mogno-500); border-color: var(--mogno-300); }
+.badge-pulada    { background: var(--terra-50);   color: var(--terra-500); border-color: var(--terra-200); }
 
 /* ── Formulários ─────────────────────────────────────────── */
 .form-label {

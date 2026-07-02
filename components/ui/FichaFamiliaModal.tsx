@@ -19,7 +19,7 @@ const LABELS_STATUS: Record<string, string> = {
   fila: 'Na fila', confirmada: 'Confirmada', ativa: 'Ativa', concluida: 'Concluída', inativa: 'Inativa',
 }
 const LABELS_ENTREGA: Record<string, string> = {
-  pendente: 'Pendente', entregue: 'Entregue', nao_entregue: 'Não entregue',
+  pendente: 'Pendente', entregue: 'Entregue', nao_entregue: 'Não entregue', pulada: 'Pulada',
 }
 const LABELS_CICLO: Record<string, string> = {
   confirmado: 'Confirmado', em_curso: 'Em curso', encerrado: 'Encerrado',
