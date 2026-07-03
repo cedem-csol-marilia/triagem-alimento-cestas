@@ -32,6 +32,14 @@ interface EntregaRow {
   tipo: string
 }
 
+// Entrega concluída (histórico) — alimenta gráfico e KPIs.
+interface EntregaFeita {
+  familia_id: string
+  mes_referencia: string
+  pedido_enviado_em: string | null
+  data_entrega: string | null
+}
+
 // Estado de uma cesta na grade, do mais urgente ao mais tranquilo.
 type EstadoCesta = 'sem_pedido' | 'nao_entregue' | 'pedida' | 'futuro' | 'pulada' | 'entregue'
 
@@ -90,6 +98,32 @@ function listarNomes(nomes: string[], max = 5) {
   return curtos.slice(0, max).join(', ') + ` +${curtos.length - max}`
 }
 
+// Célula da grade: pill com o estado mais urgente + marcação de avulsa.
+function CelulaCesta({ mes, entregas, mesHoje }: { mes: string; entregas: EntregaRow[]; mesHoje: string }) {
+  if (entregas.length === 0) return <td style={{ textAlign: 'center', color: 'var(--terra-300)' }}>—</td>
+  const estado = entregas.map(e => estadoCesta(e, mesHoje)).sort((a, b) => URGENCIA.indexOf(a) - URGENCIA.indexOf(b))[0]
+  const st = ESTILO_CESTA[estado]
+  const temAvulsa = entregas.some(e => e.tipo === 'avulsa')
+  return (
+    <td style={{ textAlign: 'center' }}>
+      <Link href={`/entregas?mes=${mes}`} style={{ textDecoration: 'none' }}>
+        <span style={{
+          display: 'inline-block', fontSize: '0.68rem', padding: '2px 10px',
+          borderRadius: 'var(--radius-pill)', background: st.bg, color: st.cor,
+          border: `1px solid ${st.borda}`, whiteSpace: 'nowrap',
+        }}>
+          {st.rotulo}{entregas.length > 1 ? ` ×${entregas.length}` : ''}
+        </span>
+        {temAvulsa && (
+          <div style={{ fontSize: '0.55rem', color: 'var(--ocre-600)', marginTop: 1 }}>
+            {entregas.length > 1 ? 'inclui avulsa' : 'avulsa'}
+          </div>
+        )}
+      </Link>
+    </td>
+  )
+}
+
 // ── Página ────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -104,7 +138,9 @@ export default function DashboardPage() {
   const [loteAtivo,   setLoteAtivo]   = useState<string | null>(null)
   const [entregasCiclo, setEntregasCiclo] = useState<EntregaRow[]>([])
   const [pendentes,     setPendentes]     = useState<EntregaRow[]>([])
-  const [atendidas,     setAtendidas]     = useState<{ familia_id: string; mes_referencia: string }[]>([])
+  const [atendidas,     setAtendidas]     = useState<EntregaFeita[]>([])
+  const [avulsas,       setAvulsas]       = useState<EntregaRow[]>([])
+  const [familiasInfo,  setFamiliasInfo]  = useState<{ id: string; num_total_pessoas: number | null; status: string }[]>([])
   const [anoGrafico,    setAnoGrafico]    = useState(new Date().getFullYear())
 
   const mesHoje = primeiroDiaHoje()
@@ -121,6 +157,8 @@ export default function DashboardPage() {
         { data: ciclos },
         { data: pend },
         { data: entregues },
+        { data: avulsasData },
+        { data: fams },
       ] = await Promise.all([
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'confirmada'),
@@ -136,8 +174,14 @@ export default function DashboardPage() {
         supabase.from('painel_entregas')
           .select('id, ciclo_id, familia_id, nome_responsavel, mes_referencia, status, pedido_confirmado, pedido_loja, tipo')
           .eq('status', 'pendente'),
-        // Entregas concluídas de todos os tempos — alimenta o gráfico por mês.
-        supabase.from('entregas').select('familia_id, mes_referencia').eq('status', 'entregue'),
+        // Entregas concluídas de todos os tempos — alimenta o gráfico e os KPIs.
+        supabase.from('entregas').select('familia_id, mes_referencia, pedido_enviado_em, data_entrega').eq('status', 'entregue'),
+        // Avulsas (qualquer status) — aparecem na grade do ciclo.
+        supabase.from('painel_entregas')
+          .select('id, ciclo_id, familia_id, nome_responsavel, mes_referencia, status, pedido_confirmado, pedido_loja, tipo')
+          .eq('tipo', 'avulsa'),
+        // Famílias (id, tamanho, status) — KPIs de inscritas e pessoas alcançadas.
+        supabase.from('familias').select('id, num_total_pessoas, status'),
       ])
 
       setNaFila(fila ?? 0)
@@ -146,7 +190,9 @@ export default function DashboardPage() {
       setIncompletos(incomp ?? 0)
       setNaoCasadas(nc ?? 0)
       setPendentes((pend as unknown as EntregaRow[]) ?? [])
-      setAtendidas((entregues as { familia_id: string; mes_referencia: string }[]) ?? [])
+      setAtendidas((entregues as EntregaFeita[]) ?? [])
+      setAvulsas((avulsasData as unknown as EntregaRow[]) ?? [])
+      setFamiliasInfo((fams as { id: string; num_total_pessoas: number | null; status: string }[]) ?? [])
 
       // Agrupa os ciclos ativos em lotes (mesma data_inicio + data_fim).
       const rows = ((ciclos ?? []) as unknown as CicloRow[])
@@ -232,13 +278,35 @@ export default function DashboardPage() {
   const totalAnoGrafico = new Set(
     atendidas.filter(a => a.mes_referencia.startsWith(String(anoGrafico))).map(a => a.familia_id)).size
 
-  // Índice das entregas do ciclo por célula (ciclo_id + mês).
+  // Índice das entregas por célula (família + mês) — cestas do ciclo E avulsas.
   const porCelula = new Map<string, EntregaRow[]>()
-  for (const e of entregasCiclo) {
-    if (!e.ciclo_id) continue
-    const k = `${e.ciclo_id}|${e.mes_referencia}`
+  for (const e of [...entregasCiclo, ...avulsas]) {
+    const k = `${e.familia_id}|${e.mes_referencia}`
     porCelula.set(k, [...(porCelula.get(k) ?? []), e])
   }
+  // Cestas de uma linha da grade: as do ciclo daquela família + avulsas do mês.
+  const cestasDe = (c: CicloRow, mes: string) =>
+    (porCelula.get(`${c.familia_id}|${mes}`) ?? []).filter(e => e.ciclo_id === c.id || e.tipo === 'avulsa')
+
+  // ── KPIs do projeto ─────────────────────────────────────────
+  const inscritas = familiasInfo.filter(f => f.status !== 'inativa').length
+  const idsAtendidas = new Set(atendidas.map(a => a.familia_id))
+  const pessoasAlcancadas = familiasInfo
+    .filter(f => idsAtendidas.has(f.id))
+    .reduce((s, f) => s + (f.num_total_pessoas ?? 0), 0)
+  const cestasAno = atendidas.filter(a => a.mes_referencia.startsWith(String(anoGrafico))).length
+  const prazos = atendidas
+    .filter(a => a.pedido_enviado_em && a.data_entrega)
+    .map(a => (new Date(a.data_entrega!).getTime() - new Date(a.pedido_enviado_em!).getTime()) / 86400000)
+    .filter(d => d >= 0)
+  const prazoMedio = prazos.length > 0 ? Math.round(prazos.reduce((s, d) => s + d, 0) / prazos.length) : null
+  const kpis = [
+    { label: 'Famílias inscritas',  valor: String(inscritas),           sub: 'cadastros ativos' },
+    { label: 'Famílias atendidas',  valor: String(idsAtendidas.size),   sub: 'desde o início' },
+    { label: 'Pessoas alcançadas',  valor: String(pessoasAlcancadas),   sub: 'nas famílias atendidas' },
+    { label: 'Cestas entregues',    valor: String(atendidas.length),    sub: `${cestasAno} em ${anoGrafico}` },
+    { label: 'Pedido → entrega',    valor: prazoMedio !== null ? `${prazoMedio}d` : '—', sub: 'tempo médio' },
+  ]
 
   return (
     <>
@@ -317,13 +385,21 @@ export default function DashboardPage() {
           // Totais por mês (cabeçalho das colunas)
           const totaisMes = lote.meses.map(mes => {
             const estados = lote.ciclos.map(c => {
-              const es = porCelula.get(`${c.id}|${mes}`) ?? []
+              const es = cestasDe(c, mes)
               if (es.length === 0) return null
               return es.map(e => estadoCesta(e, mesHoje)).sort((a, b) => URGENCIA.indexOf(a) - URGENCIA.indexOf(b))[0]
             }).filter(Boolean) as EstadoCesta[]
             const conta = (s: EstadoCesta) => estados.filter(e => e === s).length
             return { entregues: conta('entregue'), pedidas: conta('pedida'), semPedido: conta('sem_pedido'), puladas: conta('pulada'), naoEntregues: conta('nao_entregue'), futuras: conta('futuro') }
           })
+
+          // Avulsas de famílias que NÃO estão no lote, nos meses do lote → linhas extras.
+          const familiasDoLote = new Set(lote.ciclos.map(c => c.familia_id))
+          const avulsasExtras = new Map<string, EntregaRow[]>()
+          for (const e of avulsas) {
+            if (familiasDoLote.has(e.familia_id) || !lote.meses.includes(e.mes_referencia)) continue
+            avulsasExtras.set(e.familia_id, [...(avulsasExtras.get(e.familia_id) ?? []), e])
+          }
 
           return (
             <div key={lote.chave} className="card" style={{ padding: 'var(--space-5)', marginBottom: 'var(--space-5)' }}>
@@ -378,25 +454,23 @@ export default function DashboardPage() {
                         <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--terra-900)' }}>
                           {c.familias?.nome_responsavel ?? '—'}
                         </td>
-                        {lote.meses.map(mes => {
-                          const es = porCelula.get(`${c.id}|${mes}`) ?? []
-                          if (es.length === 0) return <td key={mes} style={{ textAlign: 'center', color: 'var(--terra-300)' }}>—</td>
-                          const estado = es.map(e => estadoCesta(e, mesHoje)).sort((a, b) => URGENCIA.indexOf(a) - URGENCIA.indexOf(b))[0]
-                          const st = ESTILO_CESTA[estado]
-                          return (
-                            <td key={mes} style={{ textAlign: 'center' }}>
-                              <Link href={`/entregas?mes=${mes}`} style={{ textDecoration: 'none' }}>
-                                <span style={{
-                                  display: 'inline-block', fontSize: '0.68rem', padding: '2px 10px',
-                                  borderRadius: 'var(--radius-pill)', background: st.bg, color: st.cor,
-                                  border: `1px solid ${st.borda}`, whiteSpace: 'nowrap',
-                                }}>
-                                  {st.rotulo}{es.length > 1 ? ` ×${es.length}` : ''}
-                                </span>
-                              </Link>
-                            </td>
-                          )
-                        })}
+                        {lote.meses.map(mes => (
+                          <CelulaCesta key={mes} mes={mes} entregas={cestasDe(c, mes)} mesHoje={mesHoje} />
+                        ))}
+                      </tr>
+                    ))}
+                    {/* Avulsas de famílias fora do lote */}
+                    {Array.from(avulsasExtras.entries()).map(([fid, es]) => (
+                      <tr key={fid}>
+                        <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--terra-900)' }}>
+                          {es[0].nome_responsavel}
+                          <span style={{ marginLeft: 6, fontSize: '0.58rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ocre-600)', background: '#FDF6D3', border: '1px solid var(--ocre-200)', borderRadius: 'var(--radius-pill)', padding: '1px 6px' }}>
+                            avulsa
+                          </span>
+                        </td>
+                        {lote.meses.map(mes => (
+                          <CelulaCesta key={mes} mes={mes} entregas={es.filter(e => e.mes_referencia === mes)} mesHoje={mesHoje} />
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -448,11 +522,23 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* ── 4. Famílias atendidas por mês ── */}
+        {/* ── 4. Números do projeto: KPIs + famílias atendidas por mês ── */}
         <div className="card" style={{ padding: 'var(--space-5)', marginTop: 'var(--space-5)' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)', marginBottom: 'var(--space-4)' }}>
+            Números do projeto
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
+            {kpis.map(k => (
+              <div key={k.label} style={{ background: 'var(--terra-50)', border: '1px solid var(--terra-100)', borderRadius: 'var(--radius-md)', padding: 'var(--space-3) var(--space-4)' }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--terra-400)' }}>{k.label}</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', fontWeight: 700, color: 'var(--terra-800)', lineHeight: 1.2 }}>{k.valor}</div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--terra-500)' }}>{k.sub}</div>
+              </div>
+            ))}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
             <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--terra-800)' }}>
                 Famílias atendidas por mês
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--terra-500)' }}>
