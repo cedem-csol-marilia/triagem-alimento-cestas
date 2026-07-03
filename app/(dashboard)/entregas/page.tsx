@@ -3,6 +3,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import FichaFamiliaModal from '@/components/ui/FichaFamiliaModal'
+import { baixarCsvPedido, type FamiliaPedido } from '@/lib/exportarPedido'
 import type { PainelEntrega, StatusEntrega } from '@/types'
 
 const MESES_CURTOS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -24,6 +26,7 @@ export default function EntregasPage() {
   })
   const [salvando, setSalvando] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ msg: string; tipo: 'ok' | 'erro' } | null>(null)
+  const [fichaFamilia, setFichaFamilia] = useState<string | null>(null)
 
   // Estado do formulário de entrega avulsa
   const [mostrarAvulsa, setMostrarAvulsa] = useState(false)
@@ -103,6 +106,30 @@ export default function EntregasPage() {
     carregar(); carregarMeses()
   }
 
+  // Exporta o pedido do mês: cestas pendentes que ainda não têm nº de pedido.
+  // Uma linha por cesta (cada uma vira um pedido no site da loja).
+  async function exportarPedidoMes() {
+    const alvo = entregas.filter(e => e.status === 'pendente' && !e.pedido_loja && !e.pedido_confirmado)
+    if (alvo.length === 0) {
+      setFeedback({ msg: 'Nenhuma cesta pendente sem pedido neste mês.', tipo: 'erro' })
+      return
+    }
+    // O painel não tem CEP/crianças/idosos — busca na tabela de famílias.
+    const ids = Array.from(new Set(alvo.map(e => e.familia_id)))
+    const { data, error } = await supabase.from('familias')
+      .select('id, nome_responsavel, cep, endereco, bairro, ponto_referencia, whatsapp, num_total_pessoas_raw, num_total_pessoas, num_criancas, num_idosos, pode_buscar_cedem')
+      .in('id', ids)
+    if (error) {
+      setFeedback({ msg: 'Erro ao exportar: ' + error.message, tipo: 'erro' })
+      return
+    }
+    const porId = new Map(((data ?? []) as ({ id: string } & FamiliaPedido)[]).map(f => [f.id, f]))
+    const linhas = alvo
+      .map(e => porId.get(e.familia_id))
+      .filter(Boolean) as FamiliaPedido[]
+    baixarCsvPedido(linhas, `pedido-cestas-${mesAtual.slice(0, 7)}.csv`)
+  }
+
   function formatarMes(str: string) {
     const [ano, mes] = str.split('-')
     return new Date(Number(ano), Number(mes) - 1, 1)
@@ -134,9 +161,15 @@ export default function EntregasPage() {
             {' '}· {totalEntregues} entregues · {totalPendentes} pendentes{totalPuladas > 0 ? ` · ${totalPuladas} pulada${totalPuladas !== 1 ? 's' : ''}` : ''}
           </p>
         </div>
-        <button className="btn btn-ocre" onClick={() => setMostrarAvulsa(v => !v)}>
-          {mostrarAvulsa ? 'Cancelar' : '+ Entrega avulsa'}
-        </button>
+        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={exportarPedidoMes}
+            title="Baixa o CSV com as cestas pendentes deste mês que ainda não têm nº de pedido">
+            ⬇ Exportar pedido
+          </button>
+          <button className="btn btn-ocre" onClick={() => setMostrarAvulsa(v => !v)}>
+            {mostrarAvulsa ? 'Cancelar' : '+ Entrega avulsa'}
+          </button>
+        </div>
       </div>
 
       <div className="page-content">
@@ -248,8 +281,13 @@ export default function EntregasPage() {
                 {entregas.map(e => (
                   <tr key={e.id} style={{ opacity: salvando === e.id ? 0.6 : 1 }}>
                     <td>
-                      <div style={{ fontWeight: 500, color: 'var(--terra-900)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {e.nome_responsavel}
+                      <div
+                        onClick={() => setFichaFamilia(e.familia_id)}
+                        title="Ver ficha da família"
+                        style={{ fontWeight: 500, color: 'var(--terra-900)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                        <span style={{ textDecoration: 'underline', textDecorationColor: 'var(--terra-200)', textUnderlineOffset: 3 }}>
+                          {e.nome_responsavel}
+                        </span>
                         {e.tipo === 'avulsa' && (
                           <span style={{ fontSize: '0.6rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ocre-600)', background: '#FDF6D3', border: '1px solid var(--ocre-200)', borderRadius: 'var(--radius-pill)', padding: '1px 7px' }}>
                             avulsa
@@ -321,6 +359,15 @@ export default function EntregasPage() {
           </div>
         )}
       </div>
+
+      {/* Ficha 360º da família (mesma da tela de Famílias) */}
+      {fichaFamilia && (
+        <FichaFamiliaModal
+          familiaId={fichaFamilia}
+          onClose={() => setFichaFamilia(null)}
+          onMudou={carregar}
+        />
+      )}
     </>
   )
 }
