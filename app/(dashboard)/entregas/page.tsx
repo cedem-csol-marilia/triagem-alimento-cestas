@@ -59,6 +59,11 @@ export default function EntregasPage() {
 
   useEffect(() => { carregar() }, [carregar])
   useEffect(() => { carregarMeses() }, [carregarMeses])
+  // Links do dashboard chegam com ?mes=AAAA-MM-01 — abre direto naquele mês.
+  useEffect(() => {
+    const m = new URLSearchParams(window.location.search).get('mes')
+    if (m && /^\d{4}-\d{2}-01$/.test(m)) setMesAtual(m)
+  }, [])
   useEffect(() => {
     supabase.from('familias').select('id, nome_responsavel').neq('status', 'inativa')
       .order('nome_responsavel', { ascending: true })

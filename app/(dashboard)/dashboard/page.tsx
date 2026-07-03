@@ -1,141 +1,183 @@
 'use client'
 // app/(dashboard)/dashboard/page.tsx
+// Dashboard operacional em 3 blocos: pendências → grade do ciclo mês a mês → ação agora.
+// A grade conta por MÊS DE REFERÊNCIA da cesta (não mês do calendário): cesta de
+// junho pedida em julho continua aparecendo na coluna de junho.
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { janelaCicloReal, formatarDataBR, type JanelaCicloReal } from '@/lib/ciclo'
 
-interface Stats {
-  naFila: number
-  confirmadas: number
-  ativas: number
-  triagem: number
-  totalFamilias: number
-  cadastroIncompleto: number
-  duplicatasPendentes: number
-  // cestas do mês
-  programadas: number
-  solicitadas: number
-  entregues: number
-  // exceções
-  naoCasadas: number
+// ── Tipos locais ──────────────────────────────────────────────
+
+interface CicloRow {
+  id: string
+  familia_id: string
+  data_inicio: string
+  data_fim: string
+  status: string
+  familias: { nome_responsavel: string } | null
 }
 
-interface CicloAtivo {
+interface EntregaRow {
+  id: string
+  ciclo_id: string | null
   familia_id: string
   nome_responsavel: string
+  mes_referencia: string
   status: string
+  pedido_confirmado: boolean
+  pedido_loja: string | null
+  tipo: string
 }
 
-interface EntregaResumo {
-  id: string
-  nome_responsavel: string
-  whatsapp: string | null
-  endereco: string | null
-  bairro: string | null
-  ponto_referencia: string | null
-  pode_buscar_cedem: boolean
-  status: string
+// Estado de uma cesta na grade, do mais urgente ao mais tranquilo.
+type EstadoCesta = 'sem_pedido' | 'nao_entregue' | 'pedida' | 'futuro' | 'pulada' | 'entregue'
+
+interface Lote {
+  chave: string
+  janela: JanelaCicloReal
+  meses: string[]                 // 'AAAA-MM-01' de cada mês do lote
+  ciclos: CicloRow[]              // 1 por família, ordenado por nome
 }
 
-interface ResumoCiclo {
-  programadas: number
-  entregues: number
+// ── Helpers ───────────────────────────────────────────────────
+
+const primeiroDiaHoje = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
+
+const temPedido = (e: EntregaRow) => e.pedido_confirmado || !!e.pedido_loja
+
+function estadoCesta(e: EntregaRow, mesHoje: string): EstadoCesta {
+  if (e.status === 'entregue') return 'entregue'
+  if (e.status === 'pulada') return 'pulada'
+  if (e.status === 'nao_entregue') return 'nao_entregue'
+  if (temPedido(e)) return 'pedida'
+  return e.mes_referencia > mesHoje ? 'futuro' : 'sem_pedido'
+}
+
+// Quando a família tem mais de uma cesta no mesmo mês, a célula mostra a mais urgente.
+const URGENCIA: EstadoCesta[] = ['sem_pedido', 'nao_entregue', 'pedida', 'futuro', 'pulada', 'entregue']
+
+const ESTILO_CESTA: Record<EstadoCesta, { rotulo: string; bg: string; cor: string; borda: string }> = {
+  entregue:     { rotulo: 'entregue',     bg: 'var(--musgo-100)', cor: 'var(--musgo-700)', borda: 'var(--musgo-300)' },
+  pedida:       { rotulo: 'pedida',       bg: '#FDF6D3',          cor: 'var(--ocre-600)',  borda: 'var(--ocre-200)' },
+  sem_pedido:   { rotulo: 'sem pedido',   bg: 'var(--mogno-100)', cor: 'var(--mogno-500)', borda: 'var(--mogno-300)' },
+  nao_entregue: { rotulo: 'não entregue', bg: 'var(--mogno-100)', cor: 'var(--mogno-500)', borda: 'var(--mogno-300)' },
+  pulada:       { rotulo: 'pulada',       bg: 'var(--terra-50)',  cor: 'var(--terra-500)', borda: 'var(--terra-200)' },
+  futuro:       { rotulo: '—',            bg: 'transparent',      cor: 'var(--terra-300)', borda: 'transparent' },
+}
+
+const NOMES_MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+const MESES_CURTOS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+function nomeMes(mes: string) {
+  return NOMES_MESES[Number(mes.slice(5, 7)) - 1] ?? mes
+}
+
+function nomeMesCurto(mes: string) {
+  const n = nomeMes(mes)
+  return n.slice(0, 3).charAt(0).toUpperCase() + n.slice(1, 3) + ' ' + mes.slice(0, 4)
+}
+
+// Lista nomes com limite: "Ana, Bia, Carla +2"
+function listarNomes(nomes: string[], max = 5) {
+  const curtos = nomes.map(n => n.split(' ')[0] + ' ' + (n.split(' ')[1] ?? '')).map(n => n.trim())
+  if (curtos.length <= max) return curtos.join(', ')
+  return curtos.slice(0, max).join(', ') + ` +${curtos.length - max}`
+}
+
+// ── Página ────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const supabase = createClient()
-  const [stats,        setStats]        = useState<Stats | null>(null)
-  const [ciclosAtivos, setCiclosAtivos] = useState<CicloAtivo[]>([])
-  const [entregas,     setEntregas]     = useState<EntregaResumo[]>([])
-  const [janela,       setJanela]       = useState<JanelaCicloReal | null>(null)
-  const [resumoCiclo,  setResumoCiclo]  = useState<ResumoCiclo>({ programadas: 0, entregues: 0 })
-  const [loading,      setLoading]      = useState(true)
+  const [loading,   setLoading]   = useState(true)
+  const [triagem,   setTriagem]   = useState(0)
+  const [incompletos, setIncompletos] = useState(0)
+  const [naoCasadas,  setNaoCasadas]  = useState(0)
+  const [naFila,      setNaFila]      = useState(0)
+  const [confirmadas, setConfirmadas] = useState(0)
+  const [lotes,       setLotes]       = useState<Lote[]>([])
+  const [loteAtivo,   setLoteAtivo]   = useState<string | null>(null)
+  const [entregasCiclo, setEntregasCiclo] = useState<EntregaRow[]>([])
+  const [pendentes,     setPendentes]     = useState<EntregaRow[]>([])
+  const [atendidas,     setAtendidas]     = useState<{ familia_id: string; mes_referencia: string }[]>([])
+  const [anoGrafico,    setAnoGrafico]    = useState(new Date().getFullYear())
+
+  const mesHoje = primeiroDiaHoje()
 
   useEffect(() => {
     async function carregar() {
-      const hoje     = new Date()
-      const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
-
       const [
-        { count: naFila },
-        { count: confirmadas },
-        { count: ativas },
-        { count: triagem },
-        { count: totalFamilias },
-        { count: cadastroIncompleto },
-        { count: duplicatasPendentes },
-        { count: programadas },
-        { count: solicitadas },
-        { count: entregues },
-        { count: naoCasadas },
+        { count: fila },
+        { count: conf },
+        { count: novas },
+        { count: dups },
+        { count: incomp },
+        { count: nc },
         { data: ciclos },
-        { data: proximasEntregas },
+        { data: pend },
+        { data: entregues },
       ] = await Promise.all([
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'fila'),
         supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'confirmada'),
-        supabase.from('familias').select('*', { count: 'exact', head: true }).eq('status', 'ativa'),
         supabase.from('respostas_forms').select('*', { count: 'exact', head: true }).eq('dedup_status', 'novo'),
-        supabase.from('familias').select('*', { count: 'exact', head: true }).neq('status', 'inativa'),
-        supabase.from('cadastro_incompleto').select('*', { count: 'exact', head: true }),
         supabase.from('duplicatas_detectadas').select('*', { count: 'exact', head: true }).eq('status', 'pendente'),
-        // Programadas = TODAS as entregas do mês (ciclo + avulsa)
-        supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).eq('mes_referencia', mesAtual),
-        // Solicitadas = têm pedido (confirmado OU nº da loja preenchido)
-        supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).eq('mes_referencia', mesAtual).or('pedido_confirmado.eq.true,pedido_loja.not.is.null'),
-        // Entregues = status entregue
-        supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).eq('mes_referencia', mesAtual).eq('status', 'entregue'),
-        // Exceções da automação ainda abertas
+        supabase.from('cadastro_incompleto').select('*', { count: 'exact', head: true }),
         supabase.from('entregas_nao_casadas').select('*', { count: 'exact', head: true }).eq('resolvido', false),
-        supabase.from('ciclos').select('id, familia_id, data_inicio, data_fim, status, familias(nome_responsavel)').in('status', ['confirmado', 'em_curso']).order('data_inicio', { ascending: false }),
-        supabase.from('painel_entregas').select('id, nome_responsavel, whatsapp, endereco, bairro, ponto_referencia, pode_buscar_cedem, status').eq('mes_referencia', mesAtual).eq('status', 'pendente').limit(5),
+        supabase.from('ciclos')
+          .select('id, familia_id, data_inicio, data_fim, status, familias(nome_responsavel)')
+          .in('status', ['confirmado', 'em_curso'])
+          .order('data_inicio', { ascending: false }),
+        // Todas as entregas pendentes (ciclo + avulsas) — alimenta o "Ação agora".
+        supabase.from('painel_entregas')
+          .select('id, ciclo_id, familia_id, nome_responsavel, mes_referencia, status, pedido_confirmado, pedido_loja, tipo')
+          .eq('status', 'pendente'),
+        // Entregas concluídas de todos os tempos — alimenta o gráfico por mês.
+        supabase.from('entregas').select('familia_id, mes_referencia').eq('status', 'entregue'),
       ])
 
-      setStats({
-        naFila:              naFila              ?? 0,
-        confirmadas:         confirmadas         ?? 0,
-        ativas:              ativas              ?? 0,
-        triagem:             (triagem ?? 0) + (duplicatasPendentes ?? 0),
-        totalFamilias:       totalFamilias       ?? 0,
-        cadastroIncompleto:  cadastroIncompleto  ?? 0,
-        duplicatasPendentes: duplicatasPendentes ?? 0,
-        programadas:         programadas         ?? 0,
-        solicitadas:         solicitadas         ?? 0,
-        entregues:           entregues           ?? 0,
-        naoCasadas:          naoCasadas          ?? 0,
+      setNaFila(fila ?? 0)
+      setConfirmadas(conf ?? 0)
+      setTriagem((novas ?? 0) + (dups ?? 0))
+      setIncompletos(incomp ?? 0)
+      setNaoCasadas(nc ?? 0)
+      setPendentes((pend as unknown as EntregaRow[]) ?? [])
+      setAtendidas((entregues as { familia_id: string; mes_referencia: string }[]) ?? [])
+
+      // Agrupa os ciclos ativos em lotes (mesma data_inicio + data_fim).
+      const rows = ((ciclos ?? []) as unknown as CicloRow[])
+      const porLote = new Map<string, CicloRow[]>()
+      for (const c of rows) {
+        const chave = `${c.data_inicio}|${c.data_fim}`
+        porLote.set(chave, [...(porLote.get(chave) ?? []), c])
+      }
+      const hoje = new Date()
+      const lotesCalc: Lote[] = Array.from(porLote.entries()).map(([chave, cs]) => {
+        const janela = janelaCicloReal(cs[0].data_inicio, cs[0].data_fim, hoje)
+        const meses = Array.from({ length: janela.totalMeses }, (_, i) => {
+          const d = new Date(janela.inicio.getFullYear(), janela.inicio.getMonth() + i, 1)
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+        })
+        const ordenados = [...cs].sort((a, b) =>
+          (a.familias?.nome_responsavel ?? '').localeCompare(b.familias?.nome_responsavel ?? ''))
+        return { chave, janela, meses, ciclos: ordenados }
       })
+      // Lote mais recente primeiro; ele começa selecionado.
+      lotesCalc.sort((a, b) => b.chave.localeCompare(a.chave))
+      setLotes(lotesCalc)
+      setLoteAtivo(lotesCalc[0]?.chave ?? null)
 
-      // Lote de ciclo ATIVO = linhas de `ciclos` com a data_inicio mais recente
-      // (a query vem ordenada por data_inicio desc). Cada família é uma linha;
-      // o ciclo é o conjunto que compartilha a mesma data_inicio.
-      const ciclosData = (ciclos ?? []) as any[]
-      const dataInicioAtual = ciclosData[0]?.data_inicio ?? null
-      const loteAtual       = ciclosData.filter(c => c.data_inicio === dataInicioAtual)
-      const dataFimAtual    = loteAtual[0]?.data_fim ?? null
-      const cicloIdsAtuais  = loteAtual.map(c => c.id as string)
-
-      setCiclosAtivos(loteAtual.map((c: any) => ({
-        familia_id:       c.familia_id,
-        nome_responsavel: c.familias?.nome_responsavel ?? '—',
-        status:           c.status,
-      })))
-      setEntregas((proximasEntregas as EntregaResumo[]) ?? [])
-
-      // Janela vinda do CICLO REAL (data_inicio → data_fim), não de uma grade fixa.
-      const j = dataInicioAtual && dataFimAtual
-        ? janelaCicloReal(dataInicioAtual, dataFimAtual, hoje)
-        : null
-      setJanela(j)
-
-      // Resumo de cestas do ciclo: conta as entregas DESSE lote (por ciclo_id),
-      // sem misturar com ciclos vizinhos que caiam nos mesmos meses.
-      if (cicloIdsAtuais.length > 0) {
-        const [{ count: prog }, { count: entr }] = await Promise.all([
-          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('ciclo_id', cicloIdsAtuais),
-          supabase.from('painel_entregas').select('*', { count: 'exact', head: true }).in('ciclo_id', cicloIdsAtuais).eq('status', 'entregue'),
-        ])
-        setResumoCiclo({ programadas: prog ?? 0, entregues: entr ?? 0 })
+      // Entregas dos lotes ativos (qualquer status) — alimentam a grade.
+      const cicloIds = rows.map(c => c.id)
+      if (cicloIds.length > 0) {
+        const { data: ent } = await supabase.from('painel_entregas')
+          .select('id, ciclo_id, familia_id, nome_responsavel, mes_referencia, status, pedido_confirmado, pedido_loja, tipo')
+          .in('ciclo_id', cicloIds)
+        setEntregasCiclo((ent as unknown as EntregaRow[]) ?? [])
       }
 
       setLoading(false)
@@ -151,37 +193,52 @@ export default function DashboardPage() {
     <div className="page-content"><div className="spinner" /></div></>
   )
 
-  // Linhas do banner de pendências (triagem, incompletos, não-casadas)
+  // ── Bloco 1: pendências ─────────────────────────────────────
   const pendencias = [
-    stats!.triagem > 0 && {
-      icon: '⚠️', href: '/triagem', cor: 'var(--mogno-500)',
-      texto: <><strong>{stats!.triagem} item{stats!.triagem !== 1 ? 's' : ''}</strong> aguarda{stats!.triagem === 1 ? '' : 'm'} triagem.</>,
+    triagem > 0 && {
+      icon: '⚠️', href: '/triagem',
+      texto: <><strong>{triagem} item{triagem !== 1 ? 's' : ''}</strong> aguarda{triagem === 1 ? '' : 'm'} triagem.</>,
     },
-    stats!.cadastroIncompleto > 0 && {
-      icon: '📋', href: '/incompletos', cor: 'var(--ocre-600)',
-      texto: <><strong>{stats!.cadastroIncompleto} família{stats!.cadastroIncompleto !== 1 ? 's' : ''}</strong> com cadastro incompleto.</>,
+    incompletos > 0 && {
+      icon: '📋', href: '/incompletos',
+      texto: <><strong>{incompletos} família{incompletos !== 1 ? 's' : ''}</strong> com cadastro incompleto.</>,
     },
-    stats!.naoCasadas > 0 && {
-      icon: '🔗', href: '/nao-casadas', cor: 'var(--terra-600)',
-      texto: <><strong>{stats!.naoCasadas} entrega{stats!.naoCasadas !== 1 ? 's' : ''} não casada{stats!.naoCasadas !== 1 ? 's' : ''}</strong> para revisar.</>,
+    naoCasadas > 0 && {
+      icon: '🔗', href: '/nao-casadas',
+      texto: <><strong>{naoCasadas} entrega{naoCasadas !== 1 ? 's' : ''} não casada{naoCasadas !== 1 ? 's' : ''}</strong> para revisar.</>,
     },
-  ].filter(Boolean) as { icon: string; href: string; cor: string; texto: React.ReactNode }[]
+  ].filter(Boolean) as { icon: string; href: string; texto: React.ReactNode }[]
 
-  const statCards = [
-    { label: 'Na fila',             value: stats!.naFila,            sub: 'aguardando seleção',  color: 'var(--terra-400)',  href: '/fila' },
-    { label: 'Confirmadas',         value: stats!.confirmadas,       sub: 'próximo ciclo',        color: 'var(--ocre-400)',   href: '/fila' },
-    { label: 'Recebendo',           value: stats!.ativas,            sub: 'ciclo em andamento',   color: 'var(--musgo-500)',  href: '/entregas' },
-    { label: 'Triagem pendente',    value: stats!.triagem,           sub: 'aguardam decisão',     color: stats!.triagem ? 'var(--mogno-500)' : 'var(--terra-300)', href: '/triagem' },
-    { label: 'Cadastro incompleto', value: stats!.cadastroIncompleto,sub: 'dados faltando',       color: stats!.cadastroIncompleto ? 'var(--ocre-600)' : 'var(--terra-300)', href: '/incompletos' },
-    { label: 'Não casadas',         value: stats!.naoCasadas,        sub: 'automação · revisar',  color: stats!.naoCasadas ? 'var(--terra-600)' : 'var(--terra-300)', href: '/nao-casadas' },
-  ]
+  // ── Bloco 3: ação agora (derivado das pendentes) ────────────
+  const aguardandoEntrega = pendentes.filter(temPedido)
+  const semPedidoAtrasadas = pendentes.filter(e => !temPedido(e) && e.mes_referencia <= mesHoje)
+  const semPedidoPorMes = new Map<string, EntregaRow[]>()
+  for (const e of semPedidoAtrasadas) {
+    semPedidoPorMes.set(e.mes_referencia, [...(semPedidoPorMes.get(e.mes_referencia) ?? []), e])
+  }
+  const mesesSemPedido = Array.from(semPedidoPorMes.keys()).sort()
 
-  // Cards de cestas do mês
-  const cestaCards = [
-    { label: 'Programadas',  value: stats!.programadas, sub: 'entregas do mês',          color: 'var(--terra-600)' },
-    { label: 'Solicitadas',  value: stats!.solicitadas, sub: 'pedido feito à empresa',   color: 'var(--ocre-400)' },
-    { label: 'Entregues',    value: stats!.entregues,   sub: 'confirmadas no mês',       color: 'var(--musgo-500)' },
-  ]
+  // ── Bloco 4: famílias atendidas por mês (contagem única por família,
+  //    pelo mês de referência da cesta) ──
+  const anosDisponiveis = Array.from(new Set([
+    ...atendidas.map(a => Number(a.mes_referencia.slice(0, 4))),
+    new Date().getFullYear(),
+  ])).sort((a, b) => b - a)
+  const familiasPorMes = Array.from({ length: 12 }, (_, i) => {
+    const prefixo = `${anoGrafico}-${String(i + 1).padStart(2, '0')}`
+    return new Set(atendidas.filter(a => a.mes_referencia.startsWith(prefixo)).map(a => a.familia_id)).size
+  })
+  const maxFamiliasMes = Math.max(1, ...familiasPorMes)
+  const totalAnoGrafico = new Set(
+    atendidas.filter(a => a.mes_referencia.startsWith(String(anoGrafico))).map(a => a.familia_id)).size
+
+  // Índice das entregas do ciclo por célula (ciclo_id + mês).
+  const porCelula = new Map<string, EntregaRow[]>()
+  for (const e of entregasCiclo) {
+    if (!e.ciclo_id) continue
+    const k = `${e.ciclo_id}|${e.mes_referencia}`
+    porCelula.set(k, [...(porCelula.get(k) ?? []), e])
+  }
 
   return (
     <>
@@ -192,9 +249,9 @@ export default function DashboardPage() {
 
       <div className="page-content">
 
-        {/* Banner único de pendências */}
+        {/* ── 1. Pendências ── */}
         {pendencias.length > 0 && (
-          <div className="card" style={{ padding: 0, marginBottom: 'var(--space-6)', overflow: 'hidden', borderLeft: '3px solid var(--ocre-400)' }}>
+          <div className="card" style={{ padding: 0, marginBottom: 'var(--space-5)', overflow: 'hidden', borderLeft: '3px solid var(--ocre-400)' }}>
             <div style={{ padding: '10px var(--space-5)', background: 'var(--ocre-200)', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ocre-600)' }}>
               Pendências
             </div>
@@ -208,153 +265,229 @@ export default function DashboardPage() {
                 }}>
                   <span style={{ fontSize: '1rem' }}>{p.icon}</span>
                   <span style={{ flex: 1 }}>{p.texto}</span>
-                  <span style={{ color: p.cor, fontSize: '0.8rem' }}>Resolver →</span>
+                  <span style={{ color: 'var(--terra-600)', fontSize: '0.8rem' }}>Resolver →</span>
                 </div>
               </Link>
             ))}
           </div>
         )}
 
-        {/* Stats operacionais */}
-        <div className="stats-grid">
-          {statCards.map(s => (
-            <Link key={s.label} href={s.href} style={{ textDecoration: 'none' }}>
-              <div className="stat-card" style={{ borderTop: `3px solid ${s.color}`, cursor: 'pointer' }}>
-                <div className="stat-label">{s.label}</div>
-                <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
-                <div className="stat-sub">{s.sub}</div>
+        {/* Linha da fila (atalho discreto) */}
+        <Link href="/fila" style={{ textDecoration: 'none' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap',
+            padding: 'var(--space-3) var(--space-4)', marginBottom: 'var(--space-5)',
+            fontSize: '0.8rem', color: 'var(--terra-600)', cursor: 'pointer',
+            background: 'var(--terra-50)', border: '1px solid var(--terra-100)', borderRadius: 'var(--radius-md)',
+          }}>
+            <span><strong style={{ color: 'var(--terra-800)' }}>{naFila}</strong> família{naFila !== 1 ? 's' : ''} na fila</span>
+            <span style={{ color: 'var(--terra-300)' }}>·</span>
+            <span><strong style={{ color: 'var(--terra-800)' }}>{confirmadas}</strong> confirmada{confirmadas !== 1 ? 's' : ''} para o próximo ciclo</span>
+            <span style={{ marginLeft: 'auto' }}>Ver fila →</span>
+          </div>
+        </Link>
+
+        {/* ── 2. Grade do ciclo, mês a mês ── */}
+        {lotes.length === 0 ? (
+          <div className="card" style={{ marginBottom: 'var(--space-5)' }}>
+            <div className="empty-state">
+              <div className="empty-state-icon">🌱</div>
+              <div className="empty-state-title">Nenhum ciclo ativo</div>
+              <div className="empty-state-desc">Confirme um ciclo na Fila para a grade aparecer aqui.</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Seletor de lote (só aparece se houver mais de um ciclo ativo) */}
+            {lotes.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+                {lotes.map(l => (
+                  <button key={l.chave} onClick={() => setLoteAtivo(l.chave)} className="btn btn-sm"
+                    style={{
+                      background: l.chave === loteAtivo ? 'var(--terra-700)' : 'var(--terra-50)',
+                      color:      l.chave === loteAtivo ? 'var(--palha)' : 'var(--terra-600)',
+                      border: '1px solid var(--terra-200)', fontWeight: 500,
+                    }}>
+                    Ciclo {l.janela.rotulo}
+                  </button>
+                ))}
               </div>
-            </Link>
-          ))}
+            )}
+            {lotes.filter(l => l.chave === loteAtivo).map(lote => {
+          // Totais por mês (cabeçalho das colunas)
+          const totaisMes = lote.meses.map(mes => {
+            const estados = lote.ciclos.map(c => {
+              const es = porCelula.get(`${c.id}|${mes}`) ?? []
+              if (es.length === 0) return null
+              return es.map(e => estadoCesta(e, mesHoje)).sort((a, b) => URGENCIA.indexOf(a) - URGENCIA.indexOf(b))[0]
+            }).filter(Boolean) as EstadoCesta[]
+            const conta = (s: EstadoCesta) => estados.filter(e => e === s).length
+            return { entregues: conta('entregue'), pedidas: conta('pedida'), semPedido: conta('sem_pedido'), puladas: conta('pulada'), naoEntregues: conta('nao_entregue'), futuras: conta('futuro') }
+          })
+
+          return (
+            <div key={lote.chave} className="card" style={{ padding: 'var(--space-5)', marginBottom: 'var(--space-5)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)' }}>
+                    Ciclo {lote.janela.rotulo} · mês {lote.janela.mesAtual} de {lote.janela.totalMeses}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--terra-500)' }}>
+                    {formatarDataBR(lote.janela.inicio)} → {formatarDataBR(lote.janela.fim)} · {lote.ciclos.length} famílias
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', fontSize: '0.7rem', color: 'var(--terra-500)' }}>
+                  {(['entregue', 'pedida', 'sem_pedido', 'pulada'] as EstadoCesta[]).map(s => (
+                    <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: ESTILO_CESTA[s].cor, display: 'inline-block' }} />
+                      {ESTILO_CESTA[s].rotulo}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="table-wrap">
+                <table className="data-table" style={{ tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '32%' }}>Família</th>
+                      {lote.meses.map((mes, i) => {
+                        const t = totaisMes[i]
+                        const partes: string[] = []
+                        if (t.entregues) partes.push(`${t.entregues} entregue${t.entregues !== 1 ? 's' : ''}`)
+                        if (t.pedidas) partes.push(`${t.pedidas} pedida${t.pedidas !== 1 ? 's' : ''}`)
+                        if (t.semPedido) partes.push(`${t.semPedido} sem pedido`)
+                        if (t.naoEntregues) partes.push(`${t.naoEntregues} não entregue${t.naoEntregues !== 1 ? 's' : ''}`)
+                        if (t.puladas) partes.push(`${t.puladas} pulada${t.puladas !== 1 ? 's' : ''}`)
+                        return (
+                          <th key={mes} style={{ textAlign: 'center' }}>
+                            <Link href={`/entregas?mes=${mes}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                              {nomeMesCurto(mes)}
+                              <div style={{ fontSize: '0.62rem', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: t.semPedido > 0 && mes <= mesHoje ? 'var(--mogno-500)' : 'var(--terra-400)' }}>
+                                {partes.length > 0 ? partes.join(' · ') : (mes > mesHoje ? 'ainda não começou' : 'sem cestas')}
+                              </div>
+                            </Link>
+                          </th>
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lote.ciclos.map(c => (
+                      <tr key={c.id}>
+                        <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500, color: 'var(--terra-900)' }}>
+                          {c.familias?.nome_responsavel ?? '—'}
+                        </td>
+                        {lote.meses.map(mes => {
+                          const es = porCelula.get(`${c.id}|${mes}`) ?? []
+                          if (es.length === 0) return <td key={mes} style={{ textAlign: 'center', color: 'var(--terra-300)' }}>—</td>
+                          const estado = es.map(e => estadoCesta(e, mesHoje)).sort((a, b) => URGENCIA.indexOf(a) - URGENCIA.indexOf(b))[0]
+                          const st = ESTILO_CESTA[estado]
+                          return (
+                            <td key={mes} style={{ textAlign: 'center' }}>
+                              <Link href={`/entregas?mes=${mes}`} style={{ textDecoration: 'none' }}>
+                                <span style={{
+                                  display: 'inline-block', fontSize: '0.68rem', padding: '2px 10px',
+                                  borderRadius: 'var(--radius-pill)', background: st.bg, color: st.cor,
+                                  border: `1px solid ${st.borda}`, whiteSpace: 'nowrap',
+                                }}>
+                                  {st.rotulo}{es.length > 1 ? ` ×${es.length}` : ''}
+                                </span>
+                              </Link>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+            })}
+          </>
+        )}
+
+        {/* ── 3. Ação agora ── */}
+        <div className="card" style={{ padding: 'var(--space-5)' }}>
+          <div style={{ fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--terra-400)', marginBottom: 'var(--space-3)' }}>
+            🎯 Ação agora
+          </div>
+          {mesesSemPedido.length === 0 && aguardandoEntrega.length === 0 && naoCasadas === 0 ? (
+            <div style={{ fontSize: '0.85rem', color: 'var(--musgo-700)' }}>✅ Tudo em dia — nenhuma cesta esperando providência.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              {mesesSemPedido.map(mes => {
+                const es = semPedidoPorMes.get(mes)!
+                return (
+                  <Link key={mes} href={`/entregas?mes=${mes}`} style={{ textDecoration: 'none' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'baseline', fontSize: '0.85rem', color: 'var(--terra-800)', cursor: 'pointer' }}>
+                      <span style={{ background: 'var(--mogno-100)', color: 'var(--mogno-500)', border: '1px solid var(--mogno-300)', borderRadius: 'var(--radius-pill)', padding: '1px 9px', fontSize: '0.75rem', fontWeight: 600 }}>{es.length}</span>
+                      <span>cesta{es.length !== 1 ? 's' : ''} de {nomeMes(mes)} ainda sem pedido — {listarNomes(es.map(e => e.nome_responsavel))}</span>
+                    </div>
+                  </Link>
+                )
+              })}
+              {aguardandoEntrega.length > 0 && (
+                <Link href="/entregas" style={{ textDecoration: 'none' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'baseline', fontSize: '0.85rem', color: 'var(--terra-800)', cursor: 'pointer' }}>
+                    <span style={{ background: '#FDF6D3', color: 'var(--ocre-600)', border: '1px solid var(--ocre-200)', borderRadius: 'var(--radius-pill)', padding: '1px 9px', fontSize: '0.75rem', fontWeight: 600 }}>{aguardandoEntrega.length}</span>
+                    <span>pedido{aguardandoEntrega.length !== 1 ? 's' : ''} feito{aguardandoEntrega.length !== 1 ? 's' : ''} aguardando entrega — {listarNomes(aguardandoEntrega.map(e => e.nome_responsavel))}</span>
+                  </div>
+                </Link>
+              )}
+              {naoCasadas > 0 && (
+                <Link href="/nao-casadas" style={{ textDecoration: 'none' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'baseline', fontSize: '0.85rem', color: 'var(--terra-800)', cursor: 'pointer' }}>
+                    <span style={{ background: 'var(--terra-100)', color: 'var(--terra-700)', border: '1px solid var(--terra-200)', borderRadius: 'var(--radius-pill)', padding: '1px 9px', fontSize: '0.75rem', fontWeight: 600 }}>{naoCasadas}</span>
+                    <span>entrega{naoCasadas !== 1 ? 's' : ''} não casada{naoCasadas !== 1 ? 's' : ''} para revisar</span>
+                  </div>
+                </Link>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Cestas do mês */}
-        <div style={{ marginTop: 'var(--space-6)' }}>
-          <div style={{ fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--terra-400)', marginBottom: 'var(--space-3)' }}>
-            Cestas deste mês
+        {/* ── 4. Famílias atendidas por mês ── */}
+        <div className="card" style={{ padding: 'var(--space-5)', marginTop: 'var(--space-5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+            <div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)' }}>
+                Famílias atendidas por mês
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--terra-500)' }}>
+                Cestas entregues, pelo mês de referência · {totalAnoGrafico} família{totalAnoGrafico !== 1 ? 's' : ''} atendida{totalAnoGrafico !== 1 ? 's' : ''} em {anoGrafico}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {anosDisponiveis.map(a => (
+                <button key={a} onClick={() => setAnoGrafico(a)} className="btn btn-sm"
+                  style={{
+                    background: a === anoGrafico ? 'var(--terra-700)' : 'var(--terra-50)',
+                    color:      a === anoGrafico ? 'var(--palha)' : 'var(--terra-600)',
+                    border: '1px solid var(--terra-200)', fontWeight: 500,
+                  }}>
+                  {a}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="stats-grid">
-            {cestaCards.map(s => (
-              <div key={s.label} className="stat-card" style={{ borderTop: `3px solid ${s.color}` }}>
-                <div className="stat-label">{s.label}</div>
-                <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
-                <div className="stat-sub">{s.sub}</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 150 }}>
+            {familiasPorMes.map((qtd, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 4 }}>
+                {qtd > 0 && (
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--musgo-700)' }}>{qtd}</span>
+                )}
+                <div style={{
+                  width: '100%', maxWidth: 42,
+                  height: qtd > 0 ? `${Math.max(6, Math.round((qtd / maxFamiliasMes) * 80))}%` : 3,
+                  background: qtd > 0 ? 'var(--musgo-500)' : 'var(--terra-100)',
+                  borderRadius: '4px 4px 0 0',
+                }} />
+                <span style={{ fontSize: '0.65rem', color: 'var(--terra-400)' }}>{MESES_CURTOS[i]}</span>
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Ciclo atual — janela vinda do banco */}
-        <div className="card" style={{ padding: 'var(--space-5)', marginTop: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
-          {janela ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)', marginBottom: 4 }}>
-                    Ciclo atual · mês {janela.mesAtual} de {janela.totalMeses}
-                  </div>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--terra-500)' }}>
-                    {formatarDataBR(janela.inicio)} → {formatarDataBR(janela.fim)} · <span style={{ textTransform: 'capitalize' }}>{janela.rotulo}</span>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-6)' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 700, color: 'var(--terra-600)', lineHeight: 1 }}>
-                      {resumoCiclo.programadas}
-                    </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--terra-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      programadas
-                    </div>
-                  </div>
-                  <div style={{ width: 1, height: 40, background: 'var(--terra-200)' }} />
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.8rem', fontWeight: 700, color: 'var(--musgo-500)', lineHeight: 1 }}>
-                      {resumoCiclo.entregues}
-                    </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--terra-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      entregues
-                    </div>
-                  </div>
-                  <Link href="/entregas" className="btn btn-ocre btn-sm">Ver entregas →</Link>
-                </div>
-              </div>
-
-              {/* progresso do ciclo (mês 1→N, conforme o ciclo real) */}
-              <div style={{ display: 'flex', gap: 6, marginTop: 'var(--space-4)' }}>
-                {Array.from({ length: janela.totalMeses }, (_, i) => i + 1).map(m => (
-                  <div key={m} style={{
-                    flex: 1, height: 6, borderRadius: 'var(--radius-pill)',
-                    background: m <= janela.mesAtual ? 'var(--musgo-500)' : 'var(--terra-200)',
-                  }} />
-                ))}
-              </div>
-
-              {stats!.confirmadas > 0 && ciclosAtivos.length > 0 && (
-                <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--terra-100)' }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--terra-400)', marginBottom: 'var(--space-2)' }}>
-                    Famílias do ciclo
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-                    {ciclosAtivos.map(c => (
-                      <span key={c.familia_id} style={{ background: 'var(--ocre-200)', color: 'var(--ocre-600)', fontSize: '0.72rem', padding: '3px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--ocre-200)' }}>
-                        {c.nome_responsavel}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
-              <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', fontWeight: 500, color: 'var(--terra-800)', marginBottom: 4 }}>
-                  Nenhum ciclo iniciado ainda
-                </div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--terra-500)' }}>
-                  Confirme um ciclo na Fila para a janela aparecer aqui.
-                </div>
-              </div>
-              <Link href="/fila" className="btn btn-ocre btn-sm">Selecionar famílias →</Link>
-            </div>
-          )}
-        </div>
-
-        {/* Entregas pendentes */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-4)' }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 500, color: 'var(--terra-800)' }}>
-              Entregas pendentes este mês
-            </h2>
-            <Link href="/entregas" className="btn btn-ghost btn-sm">Ver todas →</Link>
-          </div>
-
-          {entregas.length === 0 ? (
-            <div className="card"><div className="empty-state">
-              <div className="empty-state-icon">✅</div>
-              <div className="empty-state-title">Tudo em dia</div>
-              <div className="empty-state-desc">Nenhuma entrega pendente este mês.</div>
-            </div></div>
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead><tr><th>Família</th><th>Bairro</th><th>WhatsApp</th><th>Logística</th><th>Status</th></tr></thead>
-                <tbody>
-                  {entregas.map(e => (
-                    <tr key={e.id}>
-                      <td>
-                        <div style={{ fontWeight: 500, color: 'var(--terra-900)' }}>{e.nome_responsavel}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--terra-400)' }}>{e.endereco}</div>
-                      </td>
-                      <td>{e.bairro ?? '—'}</td>
-                      <td>{e.whatsapp ? <a href={`https://wa.me/55${e.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--musgo-500)', fontSize: '0.8rem' }}>{e.whatsapp}</a> : '—'}</td>
-                      <td style={{ fontSize: '0.78rem' }}>{e.pode_buscar_cedem ? '✓ Busca no CEDEM' : '🚚 Precisa entrega'}</td>
-                      <td><span className={`badge badge-${e.status}`}>{e.status === 'pendente' ? 'Pendente' : e.status === 'entregue' ? 'Entregue' : e.status === 'pulada' ? 'Pulada' : 'Não entregue'}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
     </>
